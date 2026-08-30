@@ -1,0 +1,10 @@
+/*
+  Localizable.strings (ja)
+
+  CloudKit がサーバ側で組み立てるプッシュ通知の文言.
+  本文は暗号化されていて CloudKit では復号できないため, ここでは送信者名だけを使う.
+  アプリが起動して復号できた場合は, 本文入りのローカル通知に差し替えられる.
+*/
+
+"PUSH_NEW_MESSAGE_TITLE" = "新しいメッセージ";
+"PUSH_NEW_MESSAGE_BODY" = "%@ さんからメッセージが届きました";

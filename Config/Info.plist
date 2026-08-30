@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ja</string>
+	<key>CFBundleDisplayName</key>
+	<string>School Message</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<!-- 写真・動画・カメラの利用目的.
+	     審査で必須であると同時に, ユーザに「なぜ求められているか」を日本語で伝える. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>友達に送る写真や動画を選ぶために使います。選んだもの以外はアプリから見えません。</string>
+	<key>NSCameraUsageDescription</key>
+	<string>その場で写真や動画を撮ってチャットに送るために使います。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>動画を撮影するときに音声を録音するために使います。</string>
+
+	<!-- サイレント通知で新着メッセージを取り込み, 復号した本文を通知に出すため. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+
+	<!-- iPad はすべての向きに対応する. 机上でも手持ちでも同じように使えるように. -->
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!-- false のままにすることで Split View / Slide Over に対応する. -->
+	<key>UIRequiresFullScreen</key>
+	<false/>
+
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+	</dict>
+
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
+
+	<!-- 輸出コンプライアンス(ITSAppUsesNonExemptEncryption)は意図的に未設定.
+	     本アプリはメッセージのエンドツーエンド暗号化を行うため, 単純に
+	     false を宣言することはできない. App Store Connect 側で
+	     自己分類レポートの要否を確認したうえで設定すること.
+	     詳細は docs/SECURITY.md を参照. -->
+</dict>
+</plist>
