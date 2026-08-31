@@ -12,17 +12,25 @@ enum CloudKitMapper {
 
     enum MappingError: LocalizedError {
         case missingField(String)
-        case impersonation
+        /// `reason` は DEBUG ビルドでのみ画面に表示する診断用の英語メモ.
+        /// (どのレコード・どの比較で不一致になったかを, Console.app 無しで
+        /// スクリーンショット 1 枚から追えるようにするため)
+        case impersonation(reason: String)
         case unknownRecordType(String)
 
         var errorDescription: String? {
             switch self {
             case .missingField(let name):
-                String(localized: "データの項目 \(name) が欠けています")
-            case .impersonation:
-                String(localized: "送信者を確認できないデータを無視しました")
+                return String(localized: "データの項目 \(name) が欠けています")
+            case .impersonation(let reason):
+                let base = String(localized: "送信者を確認できないデータを無視しました")
+                #if DEBUG
+                return "\(base)\n[詳細: \(reason)]"
+                #else
+                return base
+                #endif
             case .unknownRecordType(let type):
-                String(localized: "未知のデータ形式です (\(type))")
+                return String(localized: "未知のデータ形式です (\(type))")
             }
         }
     }
@@ -37,11 +45,16 @@ enum CloudKitMapper {
         // 決定的な形でなければならない. 他人が他人の ID でプロフィールを作っても,
         // 作成者から逆算した名前と実際の recordName が一致せず, ここで弾かれる.
         guard let creator = record.creatorUserRecordID?.recordName else {
-            throw MappingError.impersonation
+            throw MappingError.impersonation(
+                reason: "UserProfile \(record.recordID.recordName): creatorUserRecordID is nil"
+            )
         }
         let creatorID = UserID(creator)
-        guard record.recordID.recordName == CKSchema.UserProfile.recordName(for: creatorID) else {
-            throw MappingError.impersonation
+        let expectedName = CKSchema.UserProfile.recordName(for: creatorID)
+        guard record.recordID.recordName == expectedName else {
+            throw MappingError.impersonation(
+                reason: "UserProfile: recordID=\(record.recordID.recordName) creator=\(creator) expected=\(expectedName)"
+            )
         }
         guard let handle = record[CKSchema.UserProfile.handle] as? String else {
             throw MappingError.missingField(CKSchema.UserProfile.handle)
@@ -98,7 +111,9 @@ enum CloudKitMapper {
         // 会話の作成者も検証する. 他人が「自分が作った」と偽った会話は採用しない.
         // (メンバー追加による更新があるため, 更新者ではなく作成者だけを見る)
         guard let creator = record.creatorUserRecordID?.recordName, creator == ownerRaw else {
-            throw MappingError.impersonation
+            throw MappingError.impersonation(
+                reason: "Conversation \(record.recordID.recordName): creator=\(record.creatorUserRecordID?.recordName ?? "nil") ownerID=\(ownerRaw)"
+            )
         }
 
         return RawConversation(
@@ -135,7 +150,9 @@ enum CloudKitMapper {
         }
         // なりすまし対策の要. サーバ押印の作成者と申告された送信者が一致しなければ捨てる.
         guard let creator = record.creatorUserRecordID?.recordName, creator == senderRaw else {
-            throw MappingError.impersonation
+            throw MappingError.impersonation(
+                reason: "Message \(record.recordID.recordName): creator=\(record.creatorUserRecordID?.recordName ?? "nil") senderID=\(senderRaw)"
+            )
         }
         guard let conversationRef = record[CKSchema.Message.conversation] as? CKRecord.Reference else {
             throw MappingError.missingField(CKSchema.Message.conversation)
