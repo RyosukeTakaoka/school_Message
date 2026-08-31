@@ -8,37 +8,38 @@
   （CloudKit と APNs は無料アカウントでは使えません）
 - **別々の iCloud アカウント 2 つ**（1 対 1 チャットの確認に必要）
 
-## 1. プロジェクトを開く
+## 1. プロジェクトを取得して開く
 
-```
+**基本の運用は `git pull` してそのまま開くだけです。** `xcodegen generate` は
+実行しないでください（後述の理由により、実行すると Bundle ID などの設定が
+巻き戻ります）。
+
+```bash
+cd school_Message
+git pull origin claude/ipad-school-chat-app-q1ce5n
 open SchoolMessage.xcodeproj
 ```
 
 ソースは `PBXFileSystemSynchronizedRootGroup` で同期しているため、
 `SchoolMessage/` にファイルを足せば自動でターゲットに入ります。
-`.pbxproj` を手で編集する必要はありません。
+`.pbxproj` を手で編集する必要はありません（Bundle ID や Team の変更を除く）。
 
-### `.xcodeproj` が開けない・壊れている場合
+### `.xcodeproj` が開けない・壊れている場合（最終手段）
 
-リポジトリの `.xcodeproj` は手作業で用意したものなので、Xcode のバージョン差や
-一時的な破損で開けないことがあります。その場合は **XcodeGen** で
-`project.yml` から作り直してください（Mac 上で実行します、このリポジトリの
-開発コンテナには Xcode がないため CLI からの生成もここではできません）。
+`project.yml` は非常時の予備として残していますが、**通常は使いません**。
+理由は、これを実行すると `.xcodeproj` が `project.yml` の内容から丸ごと
+作り直されるため、Xcode 側で直接行った Bundle ID や Team の設定変更が
+消えてしまうためです（実際にこの問題が起きたことがあります）。
+
+万が一 `.xcodeproj` が本当に開けなくなった場合のみ、次の手順を使ってください。
+その際は **実行前に `project.yml` 内の `PRODUCT_BUNDLE_IDENTIFIER` /
+`bundleIdPrefix` が現在の設定と一致しているか必ず確認**してください。
 
 ```bash
-# 初回のみ
-brew install xcodegen
-
-# リポジトリのルートで
+brew install xcodegen   # 初回のみ
 cd school_Message
 xcodegen generate
 ```
-
-`project.yml` の内容から `SchoolMessage.xcodeproj` が再生成されます。
-設定を変えたいとき（Bundle ID、ターゲットの追加など）も、
-`.xcodeproj` を直接編集せず `project.yml` を直してから
-`xcodegen generate` を実行してください。生成物は Git 管理下に置いたままで構いません
-（差分が意味を持つのは `project.yml` 側です）。
 
 ## 2. 識別子を自分のものに変える
 
