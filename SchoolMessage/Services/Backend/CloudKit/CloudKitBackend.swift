@@ -79,18 +79,28 @@ actor CloudKitBackend: ChatBackend {
             let pageSize = min(remaining, CKQueryOperation.maximumResults)
 
             let page: (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?)
-            if let cursor {
-                page = try await database.records(
-                    continuingMatchFrom: cursor,
-                    desiredKeys: desiredKeys,
-                    resultsLimit: pageSize
-                )
-            } else {
-                page = try await database.records(
-                    matching: query,
-                    desiredKeys: desiredKeys,
-                    resultsLimit: pageSize
-                )
+            do {
+                if let cursor {
+                    page = try await database.records(
+                        continuingMatchFrom: cursor,
+                        desiredKeys: desiredKeys,
+                        resultsLimit: pageSize
+                    )
+                } else {
+                    page = try await database.records(
+                        matching: query,
+                        desiredKeys: desiredKeys,
+                        resultsLimit: pageSize
+                    )
+                }
+            } catch let error as CKError where error.code == .unknownItem {
+                // レコードタイプがまだ CloudKit のスキーマに一度も存在しない場合
+                // (＝そのタイプのレコードを一度も保存したことがない)にここに来る.
+                // これはアプリの初回利用時に必ず起きる正常な状態であり,
+                // 「該当するレコードが 0 件」として扱う. エラーとして投げてしまうと
+                // ユーザ登録・友達一覧・チャット一覧などすべての機能が
+                // 初回起動時に原因不明のまま失敗する.
+                return collected
             }
 
             for (_, result) in page.matchResults {
