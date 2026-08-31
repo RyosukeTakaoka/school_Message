@@ -14,7 +14,16 @@
 ## UserProfile
 
 公開ディレクトリ。誰でも検索できる前提の情報だけを置きます。
-**recordName は必ずそのユーザの userRecordName と一致させます。**
+
+recordName: `userprofile-<作成者の userRecordID>`
+
+> CloudKit の Public Database は, ユーザが初めてコンテナへアクセスした時点でシステム予約の
+> `Users` レコードタイプを, そのユーザの `userRecordID` と同じ recordName で自動生成します。
+> recordName はレコードタイプが違ってもデータベース内で一意でなければならないため,
+> `UserProfile` の recordName をそのまま `userRecordID` にすると `Users` システムレコードと
+> 衝突し, 「未知のデータ形式です(Users)」というエラーになります。`userprofile-` の接頭辞で
+> 名前空間を分けて回避しています。なりすまし対策は「作成者の userRecordID から逆算した
+> recordName と実際の recordName が一致するか」で行います。
 
 | フィールド | 型 | インデックス | 用途 |
 |---|---|---|---|

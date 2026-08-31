@@ -33,10 +33,14 @@ enum CloudKitMapper {
         guard record.recordType == CKSchema.UserProfile.recordType else {
             throw MappingError.unknownRecordType(record.recordType)
         }
-        // プロフィールの recordName は本人の userRecordName と等しくなければならない.
-        // 他人が他人の ID でプロフィールを作っても, ここで弾かれる.
-        guard let creator = record.creatorUserRecordID?.recordName,
-              creator == record.recordID.recordName else {
+        // プロフィールの recordName は "userprofile-<作成者の userRecordID>" という
+        // 決定的な形でなければならない. 他人が他人の ID でプロフィールを作っても,
+        // 作成者から逆算した名前と実際の recordName が一致せず, ここで弾かれる.
+        guard let creator = record.creatorUserRecordID?.recordName else {
+            throw MappingError.impersonation
+        }
+        let creatorID = UserID(creator)
+        guard record.recordID.recordName == CKSchema.UserProfile.recordName(for: creatorID) else {
             throw MappingError.impersonation
         }
         guard let handle = record[CKSchema.UserProfile.handle] as? String else {
@@ -55,7 +59,7 @@ enum CloudKitMapper {
         }
 
         return UserProfile(
-            id: UserID(record.recordID.recordName),
+            id: creatorID,
             handle: handle,
             displayName: displayName,
             avatarData: avatarData,

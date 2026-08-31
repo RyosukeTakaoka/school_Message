@@ -120,6 +120,7 @@ Xcode 側でコンテナ名を選び直すだけで揃います。
 | チャット一覧が空のまま | インデックス未設定。Console でエラーログ（Logs → 該当コンテナ）を確認 |
 | ユーザ検索で見つからない | 相手がまだプロフィール登録をしていない／`handle` の QUERYABLE 未設定 |
 | 「このチャットの鍵を取得できませんでした」 | `ConversationKey` のインデックス未設定。または相手の公開鍵が未登録（相手が一度アプリを開けば解決） |
+| 「未知のデータ形式です(Users)」 | 過去バージョンのバグ（`UserProfile` の recordName が CloudKit 予約の `Users` システムレコードと衝突していた）。最新の `main`/作業ブランチを pull して再ビルドすれば直ります。CloudKit Dashboard 側の設定変更は不要です |
 | 通知が来ない | 実機か確認。`aps-environment` と Push Notifications capability を確認 |
 | Production で動かない | Development のスキーマを「Deploy Schema Changes」で本番へ反映していない |
 

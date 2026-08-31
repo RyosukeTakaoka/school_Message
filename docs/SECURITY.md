@@ -77,7 +77,7 @@ CloudKit が**サーバ側で押印する** `creatorUserRecordID` は改変で�
 
 | レコード | 検証内容 |
 |---|---|
-| `UserProfile` | recordName == creatorUserRecordID（他人の ID でプロフィールを作れない） |
+| `UserProfile` | recordName == `userprofile-<creatorUserRecordID>`（他人の ID でプロフィールを作れない） |
 | `Message` | `senderID` == creatorUserRecordID |
 | `Conversation` | `ownerID` == creatorUserRecordID |
 | `ConversationKey` | creatorUserRecordID == その会話の `ownerID` |

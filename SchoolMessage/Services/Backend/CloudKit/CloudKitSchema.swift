@@ -21,6 +21,19 @@ enum CKSchema {
         /// Curve25519 公開鍵(raw representation, 32 バイト).
         static let publicKey = "publicKey"
         static let updatedAt = "updatedAt"
+
+        /// レコードIDに接頭辞を付ける.
+        ///
+        /// CloudKit の Public Database は, ユーザーが初めてコンテナにアクセスした時点で
+        /// システム予約の `Users` レコードタイプを, そのユーザーの `userRecordID` と
+        /// **同じ recordName** で自動的に作成する. recordName はレコードタイプが違っても
+        /// データベース内で一意でなければならないため, ここで `userID.rawValue` を
+        /// そのまま recordName に使うと, 既存の `Users` システムレコードと衝突し,
+        /// `UserProfile` として保存・取得ができなくなる(「未知のデータ形式です(Users)」).
+        /// 接頭辞を付けて名前空間を分けることでこれを避ける.
+        static func recordName(for userID: UserID) -> String {
+            "userprofile-\(userID.rawValue)"
+        }
     }
 
     // MARK: - Friendship

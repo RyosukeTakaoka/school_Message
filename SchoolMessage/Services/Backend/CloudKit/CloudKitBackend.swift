@@ -206,7 +206,7 @@ actor CloudKitBackend: ChatBackend {
 
     func fetchMyProfile() async throws -> UserProfile? {
         let userID = try await currentUserID()
-        let recordID = CKRecord.ID(recordName: userID.rawValue)
+        let recordID = CKRecord.ID(recordName: CKSchema.UserProfile.recordName(for: userID))
         do {
             let record = try await fetchWithRetry(recordID)
             let profile = try CloudKitMapper.userProfile(from: record)
@@ -227,7 +227,7 @@ actor CloudKitBackend: ChatBackend {
         try await assertHandleAvailable(normalizedHandle, for: userID)
 
         let publicKeyData = try await crypto.identityPublicKeyData()
-        let recordID = CKRecord.ID(recordName: userID.rawValue)
+        let recordID = CKRecord.ID(recordName: CKSchema.UserProfile.recordName(for: userID))
 
         // 既存があれば上書き, 無ければ新規.
         let record: CKRecord
@@ -258,7 +258,7 @@ actor CloudKitBackend: ChatBackend {
 
     func updateProfile(displayName: String?, avatarData: Data?) async throws -> UserProfile {
         let userID = try await currentUserID()
-        let recordID = CKRecord.ID(recordName: userID.rawValue)
+        let recordID = CKRecord.ID(recordName: CKSchema.UserProfile.recordName(for: userID))
 
         let record: CKRecord
         do {
@@ -293,7 +293,8 @@ actor CloudKitBackend: ChatBackend {
         let predicate = NSPredicate(format: "%K == %@", CKSchema.UserProfile.handle, handle)
         let query = CKQuery(recordType: CKSchema.UserProfile.recordType, predicate: predicate)
         let records = try await queryWithRetry(query, desiredKeys: [], limit: 2)
-        if records.contains(where: { $0.recordID.recordName != userID.rawValue }) {
+        let ownRecordName = CKSchema.UserProfile.recordName(for: userID)
+        if records.contains(where: { $0.recordID.recordName != ownRecordName }) {
             throw AppError.handleAlreadyTaken(handle)
         }
     }
@@ -361,7 +362,7 @@ actor CloudKitBackend: ChatBackend {
         let chunks = Array(Set(ids)).chunked(into: 100)
         var profiles: [UserProfile] = []
         for chunk in chunks {
-            let recordIDs = chunk.map { CKRecord.ID(recordName: $0.rawValue) }
+            let recordIDs = chunk.map { CKRecord.ID(recordName: CKSchema.UserProfile.recordName(for: $0)) }
             do {
                 let results = try await database.records(for: recordIDs)
                 for result in results.values {
