@@ -18,6 +18,28 @@ open SchoolMessage.xcodeproj
 `SchoolMessage/` にファイルを足せば自動でターゲットに入ります。
 `.pbxproj` を手で編集する必要はありません。
 
+### `.xcodeproj` が開けない・壊れている場合
+
+リポジトリの `.xcodeproj` は手作業で用意したものなので、Xcode のバージョン差や
+一時的な破損で開けないことがあります。その場合は **XcodeGen** で
+`project.yml` から作り直してください（Mac 上で実行します、このリポジトリの
+開発コンテナには Xcode がないため CLI からの生成もここではできません）。
+
+```bash
+# 初回のみ
+brew install xcodegen
+
+# リポジトリのルートで
+cd school_Message
+xcodegen generate
+```
+
+`project.yml` の内容から `SchoolMessage.xcodeproj` が再生成されます。
+設定を変えたいとき（Bundle ID、ターゲットの追加など）も、
+`.xcodeproj` を直接編集せず `project.yml` を直してから
+`xcodegen generate` を実行してください。生成物は Git 管理下に置いたままで構いません
+（差分が意味を持つのは `project.yml` 側です）。
+
 ## 2. 識別子を自分のものに変える
 
 3 か所を揃えてください。
