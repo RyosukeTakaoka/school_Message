@@ -24,22 +24,28 @@ open SchoolMessage.xcodeproj
 `SchoolMessage/` にファイルを足せば自動でターゲットに入ります。
 `.pbxproj` を手で編集する必要はありません（Bundle ID や Team の変更を除く）。
 
-### `.xcodeproj` が開けない・壊れている場合（最終手段）
+### `.xcodeproj` が開けない・壊れている場合
 
-`project.yml` は非常時の予備として残していますが、**通常は使いません**。
-理由は、これを実行すると `.xcodeproj` が `project.yml` の内容から丸ごと
-作り直されるため、Xcode 側で直接行った Bundle ID や Team の設定変更が
-消えてしまうためです（実際にこの問題が起きたことがあります）。
+**`xcodegen` は使わないでください。** 以前 `project.yml` を予備として
+リポジトリに置いていましたが、誤って実行してしまい、`.xcodeproj` が
+古い形式（`objectVersion` が 77 以外）に丸ごと作り直され、Bundle ID や
+ビルド設定(`DEBUG` フラグを含む)が失われる事故が複数回発生したため、
+**`project.yml` はリポジトリから削除しました。**
 
-万が一 `.xcodeproj` が本当に開けなくなった場合のみ、次の手順を使ってください。
-その際は **実行前に `project.yml` 内の `PRODUCT_BUNDLE_IDENTIFIER` /
-`bundleIdPrefix` が現在の設定と一致しているか必ず確認**してください。
+`.xcodeproj` が本当に開けなくなった場合は、xcodegen で作り直そうとせず、
+リポジトリを新しく clone し直してください。
 
 ```bash
-brew install xcodegen   # 初回のみ
+cd ..
+rm -rf school_Message
+git clone https://github.com/RyosukeTakaoka/school_Message.git
 cd school_Message
-xcodegen generate
+git checkout claude/ipad-school-chat-app-q1ce5n
+open SchoolMessage.xcodeproj
 ```
+
+それでも開けない場合は、エラーメッセージをそのまま伝えてください。
+`.pbxproj` を直接修正します。
 
 ## 2. 識別子を自分のものに変える
 
