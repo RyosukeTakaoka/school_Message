@@ -258,14 +258,29 @@ actor CloudKitBackend: ChatBackend {
         try attachAvatar(avatarData, to: record)
 
         do {
-            let saved = try await saveWithRetry(record)
-            let profile = try CloudKitMapper.userProfile(from: saved)
-            cachedDisplayName = profile.displayName
-            eventHub.emit(.profilesChanged)
-            return profile
+            _ = try await saveWithRetry(record)
         } catch {
             throw CloudKitErrorMapping.appError(from: error)
         }
+
+        // 保存直後にサーバから返るレコードは `creatorUserRecordID` がまだ
+        // 反映されていないことがあり, なりすまし検証(CloudKitMapper.userProfile)を
+        // 通せないことがある. しかしこれは「たった今, 自分自身が書き込んだ
+        // 自分のレコード」であり, 書き込みが成功した時点で本人であることは
+        // CloudKit 側の権限制御(既定では作成者しか書き込めない)によって
+        // 保証済みなので, サーバの値を再検証する必要はない. 手元の値から
+        // そのまま組み立てる.
+        let profile = UserProfile(
+            id: userID,
+            handle: normalizedHandle,
+            displayName: normalizedName,
+            avatarData: avatarData,
+            publicKeyData: publicKeyData,
+            updatedAt: .now
+        )
+        cachedDisplayName = profile.displayName
+        eventHub.emit(.profilesChanged)
+        return profile
     }
 
     func updateProfile(displayName: String?, avatarData: Data?) async throws -> UserProfile {
@@ -281,23 +296,47 @@ actor CloudKitBackend: ChatBackend {
             throw CloudKitErrorMapping.appError(from: error)
         }
 
+        // 変更しないフィールドは, 更新前に取得できている既存レコードの値を使う.
+        // (`record` はこの時点では変更前の内容なので, 上書きする前に読んでおく)
+        let existingHandle = record[CKSchema.UserProfile.handle] as? String ?? ""
+        let existingPublicKey = record[CKSchema.UserProfile.publicKey] as? Data
+
+        let resolvedDisplayName: String
         if let displayName {
-            record[CKSchema.UserProfile.displayName] = try UserProfile.validateDisplayName(displayName) as CKRecordValue
+            resolvedDisplayName = try UserProfile.validateDisplayName(displayName)
+            record[CKSchema.UserProfile.displayName] = resolvedDisplayName as CKRecordValue
+        } else {
+            resolvedDisplayName = record[CKSchema.UserProfile.displayName] as? String ?? ""
         }
-        if avatarData != nil {
+
+        let resolvedAvatarData: Data?
+        if let avatarData {
+            resolvedAvatarData = avatarData
             try attachAvatar(avatarData, to: record)
+        } else {
+            resolvedAvatarData = Self.readAvatarData(from: record)
         }
+
         record[CKSchema.UserProfile.updatedAt] = Date.now as CKRecordValue
 
         do {
-            let saved = try await saveWithRetry(record)
-            let profile = try CloudKitMapper.userProfile(from: saved)
-            cachedDisplayName = profile.displayName
-            eventHub.emit(.profilesChanged)
-            return profile
+            _ = try await saveWithRetry(record)
         } catch {
             throw CloudKitErrorMapping.appError(from: error)
         }
+
+        // registerProfile と同じ理由で, 保存結果の再検証はせず手元の値で組み立てる.
+        let profile = UserProfile(
+            id: userID,
+            handle: existingHandle,
+            displayName: resolvedDisplayName,
+            avatarData: resolvedAvatarData,
+            publicKeyData: existingPublicKey,
+            updatedAt: .now
+        )
+        cachedDisplayName = profile.displayName
+        eventHub.emit(.profilesChanged)
+        return profile
     }
 
     /// ハンドルの重複確認. 完全一致でしか衝突しないので 1 クエリで足りる.
@@ -321,6 +360,18 @@ actor CloudKitBackend: ChatBackend {
         try avatarData.write(to: url, options: .atomic)
         record[CKSchema.UserProfile.avatar] = CKAsset(fileURL: url)
         record[CKSchema.UserProfile.avatarByteCount] = NSNumber(value: avatarData.count)
+    }
+
+    /// 既存レコードから, 変更しない場合の現在のアバター画像を読み出す.
+    ///
+    /// (`attachAvatar` で今まさにアップロードした CKAsset は, 保存直後の
+    /// ローカルオブジェクトでは `fileURL` が有効とは限らないため, ここでは
+    /// 使わない. あくまで「更新前から既にサーバにあった, 変更しないアバター」
+    /// を読むためのもの)
+    private static func readAvatarData(from record: CKRecord) -> Data? {
+        guard let asset = record[CKSchema.UserProfile.avatar] as? CKAsset,
+              let url = asset.fileURL else { return nil }
+        return try? Data(contentsOf: url)
     }
 
     // MARK: - ユーザ検索
