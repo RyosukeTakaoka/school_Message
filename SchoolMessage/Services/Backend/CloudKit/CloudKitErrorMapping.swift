@@ -35,6 +35,10 @@ enum CloudKitErrorMapping {
             return .underlying(String(localized: "一度に送るデータが多すぎます"))
 
         case .unknownItem:
+            // どの操作でこれが起きたかを追えるよう, 生のエラー内容を残しておく.
+            // (「データが見つかりませんでした」自体は正常系でも出る文言なので,
+            // 想定外の場面で出ている場合はここのログで切り分ける)
+            Log.backend.notice("unknownItem: \(ckError.localizedDescription, privacy: .public)")
             return .underlying(String(localized: "データが見つかりませんでした"))
 
         case .serverRecordChanged:
@@ -68,6 +72,21 @@ enum CloudKitErrorMapping {
         if ckError.code == .partialFailure,
            let partials = ckError.partialErrorsByItemID?.values {
             return partials.contains { ($0 as? CKError)?.code == .serverRecordChanged }
+        }
+        return false
+    }
+
+    /// 「対象のレコード(タイプ)が存在しない」を表すエラーか.
+    ///
+    /// クエリ操作では, レコードタイプがまだスキーマに一度も存在しない場合,
+    /// 単純な `.unknownItem` としてではなく `.partialFailure` に包まれて
+    /// 返ってくることがある. 呼び出し側の判定を 1 箇所にまとめる.
+    static func isUnknownItem(_ error: any Error) -> Bool {
+        guard let ckError = error as? CKError else { return false }
+        if ckError.code == .unknownItem { return true }
+        if ckError.code == .partialFailure,
+           let partials = ckError.partialErrorsByItemID?.values {
+            return partials.contains { ($0 as? CKError)?.code == .unknownItem }
         }
         return false
     }

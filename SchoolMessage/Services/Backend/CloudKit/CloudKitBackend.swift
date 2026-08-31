@@ -93,13 +93,15 @@ actor CloudKitBackend: ChatBackend {
                         resultsLimit: pageSize
                     )
                 }
-            } catch let error as CKError where error.code == .unknownItem {
+            } catch {
+                guard CloudKitErrorMapping.isUnknownItem(error) else { throw error }
                 // レコードタイプがまだ CloudKit のスキーマに一度も存在しない場合
                 // (＝そのタイプのレコードを一度も保存したことがない)にここに来る.
                 // これはアプリの初回利用時に必ず起きる正常な状態であり,
                 // 「該当するレコードが 0 件」として扱う. エラーとして投げてしまうと
                 // ユーザ登録・友達一覧・チャット一覧などすべての機能が
                 // 初回起動時に原因不明のまま失敗する.
+                Log.backend.notice("record type '\(query.recordType, privacy: .public)' not found yet; treating query as empty")
                 return collected
             }
 
