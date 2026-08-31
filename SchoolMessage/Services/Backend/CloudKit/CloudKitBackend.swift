@@ -252,7 +252,7 @@ actor CloudKitBackend: ChatBackend {
         let recordID = CKRecord.ID(recordName: CKSchema.UserProfile.recordName(for: userID))
         do {
             let record = try await fetchRecordWithPopulatedCreator(recordID)
-            let profile = try CloudKitMapper.userProfile(from: record)
+            let profile = try CloudKitMapper.userProfile(from: record, currentUserID: userID)
             cachedDisplayName = profile.displayName
             return profile
         } catch let error as CKError where error.code == .unknownItem {
@@ -411,6 +411,7 @@ actor CloudKitBackend: ChatBackend {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
+        let me = try await currentUserID()
         var found: [UserID: UserProfile] = [:]
 
         // 1) ユーザIDの完全一致. 確実に効く主経路.
@@ -421,7 +422,7 @@ actor CloudKitBackend: ChatBackend {
         )
         let handleQuery = CKQuery(recordType: CKSchema.UserProfile.recordType, predicate: handlePredicate)
         for record in try await queryWithRetry(handleQuery, limit: 5) {
-            if let profile = try? CloudKitMapper.userProfile(from: record) {
+            if let profile = try? CloudKitMapper.userProfile(from: record, currentUserID: me) {
                 found[profile.id] = profile
             }
         }
@@ -436,7 +437,7 @@ actor CloudKitBackend: ChatBackend {
         let nameQuery = CKQuery(recordType: CKSchema.UserProfile.recordType, predicate: namePredicate)
         do {
             for record in try await queryWithRetry(nameQuery, limit: AppConstants.Paging.userSearchResultLimit) {
-                if let profile = try? CloudKitMapper.userProfile(from: record) {
+                if let profile = try? CloudKitMapper.userProfile(from: record, currentUserID: me) {
                     found[profile.id] = profile
                 }
             }
@@ -444,7 +445,6 @@ actor CloudKitBackend: ChatBackend {
             Log.backend.notice("display name search unavailable")
         }
 
-        let me = try await currentUserID()
         return found.values
             .filter { $0.id != me }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -452,6 +452,7 @@ actor CloudKitBackend: ChatBackend {
 
     func fetchProfiles(ids: [UserID]) async throws -> [UserProfile] {
         guard !ids.isEmpty else { return [] }
+        let me = try await currentUserID()
         // 一度に大量の ID を投げないよう分割する.
         let chunks = Array(Set(ids)).chunked(into: 100)
         var profiles: [UserProfile] = []
@@ -461,7 +462,7 @@ actor CloudKitBackend: ChatBackend {
                 let results = try await database.records(for: recordIDs)
                 for result in results.values {
                     guard case .success(let record) = result else { continue }
-                    if let profile = try? CloudKitMapper.userProfile(from: record) {
+                    if let profile = try? CloudKitMapper.userProfile(from: record, currentUserID: me) {
                         profiles.append(profile)
                     }
                 }
@@ -482,7 +483,7 @@ actor CloudKitBackend: ChatBackend {
 
         // 他人が勝手に作った Friendship を拾わないよう作成者を検証する.
         let friendIDs = records.compactMap { record -> UserID? in
-            guard record.creatorUserRecordID?.recordName == me.rawValue,
+            guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == me.rawValue,
                   let friendID = record[CKSchema.Friendship.friendID] as? String
             else { return nil }
             return UserID(friendID)

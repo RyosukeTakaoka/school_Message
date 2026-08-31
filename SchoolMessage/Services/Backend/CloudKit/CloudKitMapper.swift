@@ -35,16 +35,32 @@ enum CloudKitMapper {
         }
     }
 
+    /// CloudKit の既知の挙動: `creatorUserRecordID` は, **記録の作成者が
+    /// 自分自身でそのレコードを読むとき限り**, 実際の userRecordID ではなく
+    /// `__defaultOwner__` という匿名化されたプレースホルダを返す
+    /// (他人がそのレコードを読むときは, 実際の ID がそのまま返る)。
+    ///
+    /// これに気づかずに文字列としてそのまま比較すると, 「自分が作った
+    /// データを自分で読む」という最も基本的な操作が, 常に「なりすまし」と
+    /// 誤判定されてしまう。呼び出し側が知っている「今ログインしている
+    /// 自分の ID」でこのプレースホルダを解決してから比較する.
+    private static let currentUserPlaceholder = "__defaultOwner__"
+
+    static func resolvedCreatorName(of record: CKRecord, currentUserID: UserID) -> String? {
+        guard let raw = record.creatorUserRecordID?.recordName else { return nil }
+        return raw == currentUserPlaceholder ? currentUserID.rawValue : raw
+    }
+
     // MARK: - UserProfile
 
-    static func userProfile(from record: CKRecord) throws -> UserProfile {
+    static func userProfile(from record: CKRecord, currentUserID: UserID) throws -> UserProfile {
         guard record.recordType == CKSchema.UserProfile.recordType else {
             throw MappingError.unknownRecordType(record.recordType)
         }
         // プロフィールの recordName は "userprofile-<作成者の userRecordID>" という
         // 決定的な形でなければならない. 他人が他人の ID でプロフィールを作っても,
         // 作成者から逆算した名前と実際の recordName が一致せず, ここで弾かれる.
-        guard let creator = record.creatorUserRecordID?.recordName else {
+        guard let creator = resolvedCreatorName(of: record, currentUserID: currentUserID) else {
             throw MappingError.impersonation(
                 reason: "UserProfile \(record.recordID.recordName): creatorUserRecordID is nil"
             )
@@ -94,7 +110,7 @@ enum CloudKitMapper {
         var imageCipher: Data?
     }
 
-    static func rawConversation(from record: CKRecord) throws -> RawConversation {
+    static func rawConversation(from record: CKRecord, currentUserID: UserID) throws -> RawConversation {
         guard record.recordType == CKSchema.Conversation.recordType else {
             throw MappingError.unknownRecordType(record.recordType)
         }
@@ -110,9 +126,10 @@ enum CloudKitMapper {
         }
         // 会話の作成者も検証する. 他人が「自分が作った」と偽った会話は採用しない.
         // (メンバー追加による更新があるため, 更新者ではなく作成者だけを見る)
-        guard let creator = record.creatorUserRecordID?.recordName, creator == ownerRaw else {
+        let creator = resolvedCreatorName(of: record, currentUserID: currentUserID)
+        guard creator == ownerRaw else {
             throw MappingError.impersonation(
-                reason: "Conversation \(record.recordID.recordName): creator=\(record.creatorUserRecordID?.recordName ?? "nil") ownerID=\(ownerRaw)"
+                reason: "Conversation \(record.recordID.recordName): creator=\(creator ?? "nil") ownerID=\(ownerRaw)"
             )
         }
 
@@ -141,7 +158,7 @@ enum CloudKitMapper {
         var hasMediaAsset: Bool
     }
 
-    static func rawMessage(from record: CKRecord) throws -> RawMessage {
+    static func rawMessage(from record: CKRecord, currentUserID: UserID) throws -> RawMessage {
         guard record.recordType == CKSchema.Message.recordType else {
             throw MappingError.unknownRecordType(record.recordType)
         }
@@ -149,9 +166,10 @@ enum CloudKitMapper {
             throw MappingError.missingField(CKSchema.Message.senderID)
         }
         // なりすまし対策の要. サーバ押印の作成者と申告された送信者が一致しなければ捨てる.
-        guard let creator = record.creatorUserRecordID?.recordName, creator == senderRaw else {
+        let creator = resolvedCreatorName(of: record, currentUserID: currentUserID)
+        guard creator == senderRaw else {
             throw MappingError.impersonation(
-                reason: "Message \(record.recordID.recordName): creator=\(record.creatorUserRecordID?.recordName ?? "nil") senderID=\(senderRaw)"
+                reason: "Message \(record.recordID.recordName): creator=\(creator ?? "nil") senderID=\(senderRaw)"
             )
         }
         guard let conversationRef = record[CKSchema.Message.conversation] as? CKRecord.Reference else {

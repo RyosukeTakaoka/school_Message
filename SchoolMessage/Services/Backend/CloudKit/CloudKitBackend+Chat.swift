@@ -21,20 +21,20 @@ extension CloudKitBackend {
     func conversationKey(for conversationID: ConversationID) async throws -> SymmetricKey {
         if let cached = await crypto.cachedKey(for: conversationID) { return cached }
 
+        let me = try await currentUserID()
         let owner: UserID
         if let cachedOwner = cachedOwner(for: conversationID) {
             owner = cachedOwner
         } else {
             let record = try await fetchWithRetry(CKRecord.ID(recordName: conversationID.rawValue))
-            let raw = try CloudKitMapper.rawConversation(from: record)
+            let raw = try CloudKitMapper.rawConversation(from: record, currentUserID: me)
             cacheConversationMetadata(participants: raw.participantIDs, owner: raw.ownerID, for: raw.id)
             owner = raw.ownerID
         }
-        return try await fetchAndUnwrapKey(conversationID: conversationID, owner: owner)
+        return try await fetchAndUnwrapKey(conversationID: conversationID, owner: owner, me: me)
     }
 
-    private func fetchAndUnwrapKey(conversationID: ConversationID, owner: UserID) async throws -> SymmetricKey {
-        let me = try await currentUserID()
+    private func fetchAndUnwrapKey(conversationID: ConversationID, owner: UserID, me: UserID) async throws -> SymmetricKey {
         let predicate = NSPredicate(
             format: "%K == %@ AND %K == %@",
             CKSchema.ConversationKey.conversation, reference(to: conversationID),
@@ -45,7 +45,9 @@ extension CloudKitBackend {
 
         // 会話の作成者が書いた鍵だけを信用する.
         // 第三者が自分宛の偽の鍵レコードを置いても, ここで無視される.
-        guard let record = records.first(where: { $0.creatorUserRecordID?.recordName == owner.rawValue }),
+        guard let record = records.first(where: {
+                CloudKitMapper.resolvedCreatorName(of: $0, currentUserID: me) == owner.rawValue
+              }),
               let parsed = try? CloudKitMapper.wrappedKey(from: record) else {
             throw AppError.missingEncryptionKey
         }
@@ -135,14 +137,14 @@ extension CloudKitBackend {
 
         var keysByConversation: [ConversationID: [(creator: String, wrapped: WrappedConversationKey)]] = [:]
         for record in keyRecords {
-            guard let creator = record.creatorUserRecordID?.recordName,
+            guard let creator = CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me),
                   let parsed = try? CloudKitMapper.wrappedKey(from: record) else { continue }
             keysByConversation[parsed.conversation, default: []].append((creator, parsed.key))
         }
 
         var lastReadByConversation: [ConversationID: Date] = [:]
         for record in readRecords {
-            guard record.creatorUserRecordID?.recordName == me.rawValue,
+            guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == me.rawValue,
                   let reference = record[CKSchema.ReadState.conversation] as? CKRecord.Reference,
                   let date = record[CKSchema.ReadState.lastReadAt] as? Date else { continue }
             lastReadByConversation[ConversationID(reference.recordID.recordName)] = date
@@ -150,7 +152,7 @@ extension CloudKitBackend {
 
         var leftConversations: Set<ConversationID> = []
         for record in leaveRecords {
-            guard record.creatorUserRecordID?.recordName == me.rawValue,
+            guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == me.rawValue,
                   let reference = record[CKSchema.ConversationLeave.conversation] as? CKRecord.Reference
             else { continue }
             leftConversations.insert(ConversationID(reference.recordID.recordName))
@@ -162,7 +164,7 @@ extension CloudKitBackend {
         var keysByID: [ConversationID: SymmetricKey] = [:]
 
         for record in conversationRecords {
-            guard let raw = try? CloudKitMapper.rawConversation(from: record) else { continue }
+            guard let raw = try? CloudKitMapper.rawConversation(from: record, currentUserID: me) else { continue }
             guard raw.participantIDs.contains(me) else { continue }
             guard !leftConversations.contains(raw.id) else { continue }
 
@@ -251,7 +253,7 @@ extension CloudKitBackend {
         ]
         let records = try await queryWithRetry(query, desiredKeys: lightKeys, limit: Self.activityFetchLimit)
         for record in records {
-            guard let raw = try? CloudKitMapper.rawMessage(from: record) else { continue }
+            guard let raw = try? CloudKitMapper.rawMessage(from: record, currentUserID: me) else { continue }
             recentByConversation[raw.conversationID, default: []].append(raw)
         }
 
@@ -265,7 +267,7 @@ extension CloudKitBackend {
             var recents = recentByConversation[conversation.id] ?? []
             if recents.isEmpty {
                 // 直近ウィンドウに無い＝しばらく動きのない会話. 最新 1 件だけ引く.
-                if let latest = try? await fetchLatestRawMessage(in: conversation.id) {
+                if let latest = try? await fetchLatestRawMessage(in: conversation.id, me: me) {
                     recents = [latest]
                 }
             }
@@ -291,7 +293,7 @@ extension CloudKitBackend {
         return updated.sorted { $0.sortDate > $1.sortDate }
     }
 
-    private func fetchLatestRawMessage(in conversationID: ConversationID) async throws -> CloudKitMapper.RawMessage? {
+    private func fetchLatestRawMessage(in conversationID: ConversationID, me: UserID) async throws -> CloudKitMapper.RawMessage? {
         let query = CKQuery(
             recordType: CKSchema.Message.recordType,
             predicate: NSPredicate(format: "%K == %@", CKSchema.Message.conversation, reference(to: conversationID))
@@ -307,7 +309,7 @@ extension CloudKitBackend {
             ],
             limit: 1
         )
-        return records.compactMap { try? CloudKitMapper.rawMessage(from: $0) }.first
+        return records.compactMap { try? CloudKitMapper.rawMessage(from: $0, currentUserID: me) }.first
     }
 
     // MARK: - 会話の作成
@@ -429,7 +431,7 @@ extension CloudKitBackend {
     func addMembers(_ userIDs: [UserID], to conversationID: ConversationID) async throws -> Conversation {
         let me = try await currentUserID()
         let record = try await fetchWithRetry(CKRecord.ID(recordName: conversationID.rawValue))
-        let raw = try CloudKitMapper.rawConversation(from: record)
+        let raw = try CloudKitMapper.rawConversation(from: record, currentUserID: me)
 
         // Public Database ではレコードを更新できるのは作成者だけ.
         // UI 側でも作成者以外には追加ボタンを出さないが, ここでも防ぐ.
@@ -500,7 +502,7 @@ extension CloudKitBackend {
     func fetchConversation(_ conversationID: ConversationID) async throws -> Conversation {
         let me = try await currentUserID()
         let record = try await fetchWithRetry(CKRecord.ID(recordName: conversationID.rawValue))
-        let raw = try CloudKitMapper.rawConversation(from: record)
+        let raw = try CloudKitMapper.rawConversation(from: record, currentUserID: me)
         guard raw.participantIDs.contains(me) else { throw AppError.notAParticipant }
 
         cacheConversationMetadata(participants: raw.participantIDs, owner: raw.ownerID, for: raw.id)
@@ -580,7 +582,7 @@ extension CloudKitBackend {
     private func decodeMessages(_ records: [CKRecord], key: SymmetricKey, me: UserID) async throws -> [Message] {
         var messages: [Message] = []
         for record in records {
-            guard let raw = try? CloudKitMapper.rawMessage(from: record) else {
+            guard let raw = try? CloudKitMapper.rawMessage(from: record, currentUserID: me) else {
                 // なりすまし検出 or 壊れたレコード. 1 件落としても会話は表示する.
                 continue
             }
@@ -651,7 +653,7 @@ extension CloudKitBackend {
         let me = try await currentUserID()
         guard outgoing.senderID == me else { throw AppError.senderMismatch }
 
-        let participants = try await participants(of: outgoing.conversationID)
+        let participants = try await participants(of: outgoing.conversationID, me: me)
         guard participants.contains(me) else { throw AppError.notAParticipant }
 
         let key = try await conversationKey(for: outgoing.conversationID)
@@ -742,10 +744,10 @@ extension CloudKitBackend {
     }
 
     /// 会話の参加者一覧. キャッシュがあればそれを使う.
-    private func participants(of conversationID: ConversationID) async throws -> [UserID] {
+    private func participants(of conversationID: ConversationID, me: UserID) async throws -> [UserID] {
         if let cached = cachedParticipants(for: conversationID) { return cached }
         let record = try await fetchWithRetry(CKRecord.ID(recordName: conversationID.rawValue))
-        let raw = try CloudKitMapper.rawConversation(from: record)
+        let raw = try CloudKitMapper.rawConversation(from: record, currentUserID: me)
         cacheConversationMetadata(participants: raw.participantIDs, owner: raw.ownerID, for: raw.id)
         return raw.participantIDs
     }
