@@ -61,6 +61,11 @@ struct FriendsView: View {
             .onChange(of: query) { _, newValue in
                 scheduleSearch(newValue)
             }
+            .safeAreaInset(edge: .top) {
+                if let error = store.banner {
+                    ErrorBannerView(error: error) { store.setBanner(nil) }
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "閉じる")) { dismiss() }

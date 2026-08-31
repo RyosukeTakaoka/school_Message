@@ -413,6 +413,8 @@ actor CloudKitBackend: ChatBackend {
 
         let me = try await currentUserID()
         var found: [UserID: UserProfile] = [:]
+        var rawRecordCount = 0
+        var parseFailureReasons: [String] = []
 
         // 1) ユーザIDの完全一致. 確実に効く主経路.
         let handlePredicate = NSPredicate(
@@ -421,9 +423,14 @@ actor CloudKitBackend: ChatBackend {
             trimmed.lowercased()
         )
         let handleQuery = CKQuery(recordType: CKSchema.UserProfile.recordType, predicate: handlePredicate)
-        for record in try await queryWithRetry(handleQuery, limit: 5) {
-            if let profile = try? CloudKitMapper.userProfile(from: record, currentUserID: me) {
+        let handleRecords = try await queryWithRetry(handleQuery, limit: 5)
+        rawRecordCount += handleRecords.count
+        for record in handleRecords {
+            do {
+                let profile = try CloudKitMapper.userProfile(from: record, currentUserID: me)
                 found[profile.id] = profile
+            } catch {
+                parseFailureReasons.append(error.localizedDescription)
             }
         }
 
@@ -436,18 +443,38 @@ actor CloudKitBackend: ChatBackend {
         )
         let nameQuery = CKQuery(recordType: CKSchema.UserProfile.recordType, predicate: namePredicate)
         do {
-            for record in try await queryWithRetry(nameQuery, limit: AppConstants.Paging.userSearchResultLimit) {
-                if let profile = try? CloudKitMapper.userProfile(from: record, currentUserID: me) {
+            let nameRecords = try await queryWithRetry(nameQuery, limit: AppConstants.Paging.userSearchResultLimit)
+            rawRecordCount += nameRecords.count
+            for record in nameRecords {
+                do {
+                    let profile = try CloudKitMapper.userProfile(from: record, currentUserID: me)
                     found[profile.id] = profile
+                } catch {
+                    parseFailureReasons.append(error.localizedDescription)
                 }
             }
         } catch {
             Log.backend.notice("display name search unavailable")
         }
 
-        return found.values
+        let results = found.values
             .filter { $0.id != me }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+
+        // デバッグ用の切り分け材料: CloudKit は何かヒットしたが, 1 件も
+        // ドメインモデルに変換できなかった場合(なりすまし検証の失敗等)は,
+        // 「0 件でした」で握りつぶさず, 理由をそのままユーザに見せる.
+        // 通常の「該当ユーザがいない」場合は rawRecordCount が 0 のままなので,
+        // この分岐には入らない.
+        #if DEBUG
+        if results.isEmpty, !parseFailureReasons.isEmpty {
+            throw AppError.underlying(
+                "検索でレコードは \(rawRecordCount) 件見つかりましたが変換できませんでした\n[詳細: \(parseFailureReasons.joined(separator: " / "))]"
+            )
+        }
+        #endif
+
+        return results
     }
 
     func fetchProfiles(ids: [UserID]) async throws -> [UserProfile] {
