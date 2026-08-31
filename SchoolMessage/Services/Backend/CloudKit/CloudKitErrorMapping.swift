@@ -32,17 +32,17 @@ enum CloudKitErrorMapping {
 
         case .limitExceeded:
             // 1 リクエストが大きすぎる. 呼び出し側で分割して再試行する想定.
-            return .underlying(String(localized: "一度に送るデータが多すぎます"))
+            return .underlying(debugAnnotated(String(localized: "一度に送るデータが多すぎます"), ckError))
 
         case .unknownItem:
             // どの操作でこれが起きたかを追えるよう, 生のエラー内容を残しておく.
             // (「データが見つかりませんでした」自体は正常系でも出る文言なので,
             // 想定外の場面で出ている場合はここのログで切り分ける)
             Log.backend.notice("unknownItem: \(ckError.localizedDescription, privacy: .public)")
-            return .underlying(String(localized: "データが見つかりませんでした"))
+            return .underlying(debugAnnotated(String(localized: "データが見つかりませんでした"), ckError))
 
         case .serverRecordChanged:
-            return .underlying(String(localized: "他の端末での変更と競合しました"))
+            return .underlying(debugAnnotated(String(localized: "他の端末での変更と競合しました"), ckError))
 
         case .partialFailure:
             // 部分失敗の中で最も深刻なものを代表として返す.
@@ -52,12 +52,29 @@ enum CloudKitErrorMapping {
             return .underlying(ckError.localizedDescription)
 
         case .changeTokenExpired:
-            return .underlying(String(localized: "同期状態を再取得します"))
+            return .underlying(debugAnnotated(String(localized: "同期状態を再取得します"), ckError))
 
         default:
             Log.backend.error("unmapped CKError code \(ckError.code.rawValue, privacy: .public)")
             return .underlying(ckError.localizedDescription)
         }
+    }
+
+    /// デバッグビルドに限り, ユーザ向けメッセージに CloudKit の生のエラー内容を
+    /// 括弧書きで添える.
+    ///
+    /// このアプリはまだ開発中で, 「同じ日本語のエラー文言が, 実際には
+    /// どの CKError コードから来ているのか」を都度 Console.app や Xcode の
+    /// コンソールを漁って特定する手間が大きい. 画面にそのまま出しておけば,
+    /// エラーが起きた瞬間にスクリーンショット 1 枚で原因が分かる.
+    /// Release ビルドではこの詳細を出さない(利用者に開発者向け情報を
+    /// 見せないため).
+    private static func debugAnnotated(_ message: String, _ ckError: CKError) -> String {
+        #if DEBUG
+        return "\(message)\n[詳細: \(ckError.code.rawValue)/\(ckError.localizedDescription)]"
+        #else
+        return message
+        #endif
     }
 
     /// このエラーで自動リトライしてよいか.
