@@ -183,6 +183,37 @@ actor CloudKitBackend: ChatBackend {
         try await Task.sleep(for: .seconds(delay))
     }
 
+    /// `creatorUserRecordID` が反映されるまで待ちながら取得する.
+    ///
+    /// この値は保存直後だけでなく, その少しあとの読み込みでも
+    /// まだサーバ側で反映しきれていないことがある(CloudKit のレプリケーション遅延).
+    /// なりすまし検証(`CloudKitMapper`)がこの値を必須にしているため,
+    /// 空のまま検証に回すと「本人のデータなのに, なりすましとして拒否される」
+    /// 誤判定が起きる. 数回だけ間を置いて再取得することで, 一時的な遅延を吸収する.
+    private func fetchRecordWithPopulatedCreator(
+        _ recordID: CKRecord.ID,
+        attempts: Int = 3
+    ) async throws -> CKRecord {
+        var lastRecord: CKRecord?
+        for attempt in 0..<attempts {
+            let record = try await fetchWithRetry(recordID)
+            if record.creatorUserRecordID != nil {
+                return record
+            }
+            lastRecord = record
+            if attempt < attempts - 1 {
+                Log.backend.notice("creatorUserRecordID not yet populated; retrying")
+                try await Task.sleep(for: .seconds(1))
+            }
+        }
+        // 最終的に埋まらなければ, そのまま返す. 呼び出し側の検証で
+        // MappingError.impersonation として明確に失敗する.
+        guard let lastRecord else {
+            throw AppError.underlying(String(localized: "データを取得できませんでした"))
+        }
+        return lastRecord
+    }
+
     // MARK: - アカウント
 
     func accountStatus() async throws -> BackendAccountStatus {
@@ -220,7 +251,7 @@ actor CloudKitBackend: ChatBackend {
         let userID = try await currentUserID()
         let recordID = CKRecord.ID(recordName: CKSchema.UserProfile.recordName(for: userID))
         do {
-            let record = try await fetchWithRetry(recordID)
+            let record = try await fetchRecordWithPopulatedCreator(recordID)
             let profile = try CloudKitMapper.userProfile(from: record)
             cachedDisplayName = profile.displayName
             return profile
