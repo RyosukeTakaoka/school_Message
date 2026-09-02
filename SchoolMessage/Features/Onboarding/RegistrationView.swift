@@ -8,6 +8,7 @@ import PhotosUI
 struct RegistrationView: View {
 
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DemoModeTrigger.self) private var demoTrigger
 
     @State private var handle = ""
     @State private var displayName = ""
@@ -93,6 +94,15 @@ struct RegistrationView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSubmit)
                 }
+
+                Section {
+                    Button(String(localized: "デモモードで試す")) {
+                        demoTrigger.isRequested = true
+                    }
+                    .frame(maxWidth: .infinity)
+                } footer: {
+                    Text("友達・グループ・メッセージ履歴があらかじめ入ったサンプルデータで、サインインせずに試せます。")
+                }
             }
             .navigationTitle("プロフィールを登録")
             .onChange(of: imagePickerItem) { _, newValue in
@@ -133,4 +143,5 @@ struct RegistrationView: View {
 #Preview {
     RegistrationView()
         .environment(AppEnvironment.preview())
+        .environment(DemoModeTrigger())
 }

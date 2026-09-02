@@ -45,6 +45,7 @@ private struct LaunchPlaceholderView: View {
 private struct BlockedView: View {
     let error: AppError
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DemoModeTrigger.self) private var demoTrigger
 
     var body: some View {
         ContentUnavailableView {
@@ -58,6 +59,11 @@ private struct BlockedView: View {
                 Task { await environment.store.start() }
             }
             .buttonStyle(.borderedProminent)
+
+            Button(String(localized: "デモモードで試す")) {
+                demoTrigger.isRequested = true
+            }
+            .buttonStyle(.bordered)
         }
     }
 }
@@ -139,4 +145,5 @@ private struct EmptyChatPlaceholder: View {
 #Preview {
     RootView()
         .environment(AppEnvironment.preview())
+        .environment(DemoModeTrigger())
 }
