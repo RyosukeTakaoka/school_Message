@@ -225,17 +225,24 @@ final class ChatStore {
     }
 
     /// プッシュが届かない環境(通知を許可していない, サイレント通知が抑制された等)への保険.
+    ///
+    /// チャットを開いている間は間隔を縮め, 相手の新着メッセージが
+    /// プッシュ通知の到達を待たずに画面へ反映されるようにする.
     private func startPolling() {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(AppConstants.Timing.fallbackPollInterval))
                 guard let self else { return }
+                let interval = self.selectedConversationID == nil
+                    ? AppConstants.Timing.fallbackPollInterval
+                    : AppConstants.Timing.activeConversationPollInterval
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { return }
                 guard self.networkMonitor.isOnline else { continue }
-                await self.refreshConversations()
                 if let selected = self.selectedConversationID {
                     await self.refreshMessages(in: selected)
                 }
+                await self.refreshConversations()
             }
         }
     }

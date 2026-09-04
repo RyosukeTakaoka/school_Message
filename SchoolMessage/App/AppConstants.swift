@@ -48,6 +48,10 @@ enum AppConstants {
         static let networkTimeout: TimeInterval = 30
         /// プッシュが届かない環境(通知拒否など)のためのフォールバックポーリング間隔.
         static let fallbackPollInterval: TimeInterval = 25
+        /// チャットを開いている間のポーリング間隔.
+        /// プッシュ通知(CloudKit 購読)の到達を待たずに, 相手の新着メッセージを
+        /// 短い間隔で拾いにいく. 会話中は体感速度を優先する.
+        static let activeConversationPollInterval: TimeInterval = 3
         /// 送信リトライの初期待機時間. 以降は指数バックオフ.
         static let retryBaseDelay: TimeInterval = 1.5
         static let maxRetryAttempts = 4
