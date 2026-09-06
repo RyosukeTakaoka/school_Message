@@ -624,7 +624,10 @@ actor CloudKitBackend: ChatBackend {
         info.shouldBadge = true
         // アプリを起こして本文を復号し, より詳しい通知に差し替えるために使う.
         info.shouldSendContentAvailable = true
-        info.desiredKeys = [CKSchema.Message.conversation]
+        // alertLocalizationArgs で参照するフィールドは desiredKeys にも
+        // 含めないと, CloudKit がアラートの文言を組み立てられず通知自体が
+        // 届かない(senderDisplayName の指定漏れが原因で通知が来ていなかった).
+        info.desiredKeys = [CKSchema.Message.conversation, CKSchema.Message.senderDisplayName]
         return info
     }
 

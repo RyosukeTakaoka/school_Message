@@ -12,6 +12,7 @@ struct CreateGroupView: View {
     @State private var imagePickerItem: PhotosPickerItem?
     @State private var selectedMemberIDs: Set<UserID> = []
     @State private var isCreating = false
+    @State private var isShowingFriends = false
 
     private var store: ChatStore { environment.store }
 
@@ -40,6 +41,11 @@ struct CreateGroupView: View {
                                     .foregroundStyle(.white, Color.accentColor)
                             }
                         }
+                        // 既定のボタンスタイルのままだと, Form の行全体がこの
+                        // ボタンのタップ領域として扱われ, 隣の TextField をタップしても
+                        // 写真選択が開いてしまう(名前を確定できない不具合の原因).
+                        // `.plain` にしてタップ領域をアバター自身の見た目に限定する.
+                        .buttonStyle(.plain)
                         .accessibilityLabel(String(localized: "グループ画像を選ぶ"))
 
                         TextField(String(localized: "グループ名"), text: $name)
@@ -50,13 +56,19 @@ struct CreateGroupView: View {
 
                 Section {
                     if store.friends.isEmpty {
-                        Text("先に友達を追加してください。")
+                        Text("まだ友達がいません。下のボタンから追加してください。")
                             .font(.footnote)
                             .foregroundStyle(Palette.subdued)
                     } else {
                         ForEach(store.friends) { friend in
                             memberRow(friend)
                         }
+                    }
+
+                    Button {
+                        isShowingFriends = true
+                    } label: {
+                        Label(String(localized: "友達を追加"), systemImage: "person.badge.plus")
                     }
                 } header: {
                     Text("メンバー(\(selectedMemberIDs.count) 人を選択中)")
@@ -84,6 +96,9 @@ struct CreateGroupView: View {
                 Task {
                     imageData = try? await newValue.loadTransferable(type: Data.self)
                 }
+            }
+            .sheet(isPresented: $isShowingFriends) {
+                FriendsView()
             }
             .task { await store.refreshFriends() }
         }
