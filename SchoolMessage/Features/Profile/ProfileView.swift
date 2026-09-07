@@ -129,10 +129,59 @@ struct ProfileView: View {
             Toggle(String(localized: "通知を受け取る"), isOn: $preferences.isEnabled)
             Toggle(String(localized: "通知に本文を表示"), isOn: $preferences.showsMessagePreview)
                 .disabled(!preferences.isEnabled)
+            subscriptionStatusRow
         } header: {
             Text("通知")
         } footer: {
             Text("本文の表示をオフにすると、ロック画面には送信者だけが表示されます。iPad を机に置いたままにすることが多い場合はオフをおすすめします。")
+        }
+    }
+
+    /// 新着を知らせる仕組み(プッシュ購読)が使えているか.
+    ///
+    /// ここが失敗していると, アプリを開いていない間の通知が一切届かない.
+    /// 以前は失敗してもログに出るだけで気付けなかったため, 画面に出す.
+    @ViewBuilder
+    private var subscriptionStatusRow: some View {
+        switch store.pushSubscriptionStatus {
+        case .unknown, .configuring:
+            HStack {
+                Text("新着の受信設定")
+                Spacer()
+                ProgressView()
+            }
+
+        case .active:
+            HStack {
+                Text("新着の受信設定")
+                Spacer()
+                Label(String(localized: "有効"), systemImage: "checkmark.circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.footnote)
+                    .foregroundStyle(Palette.success)
+            }
+
+        case .failed(let error):
+            VStack(alignment: .leading, spacing: AppConstants.Layout.compactSpacing) {
+                HStack {
+                    Text("新着の受信設定")
+                    Spacer()
+                    Label(String(localized: "未設定"), systemImage: "exclamationmark.triangle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.footnote)
+                        .foregroundStyle(Palette.failure)
+                }
+                Text(error.errorDescription ?? String(localized: "設定できませんでした"))
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+                Text("この状態でも、アプリを開いている間はメッセージが自動で表示されます。届かないのはアプリを閉じている間の通知だけです。")
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+                Button(String(localized: "もう一度設定する")) {
+                    Task { await store.configurePushSubscriptions() }
+                }
+                .font(.footnote)
+            }
         }
     }
 

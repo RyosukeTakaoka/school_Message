@@ -15,6 +15,9 @@ struct SchoolMessageApp: App {
                 .environment(demoTrigger)
                 .task {
                     AppDelegate.environment = environment
+                    // サイレント通知でアプリを起こせるようにするための登録.
+                    // 許可のダイアログは出ない(許可を求めるのは最初のチャットを開いたとき).
+                    environment.pushService.registerForRemoteNotifications()
                     await environment.store.start()
                 }
                 .onChange(of: demoTrigger.isRequested) { _, requested in

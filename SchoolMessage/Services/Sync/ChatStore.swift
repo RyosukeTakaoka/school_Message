@@ -49,6 +49,20 @@ final class ChatStore {
     /// `PushNotificationService` が設定し, `RootView` が消費する.
     var pendingNotificationConversationID: ConversationID?
 
+    /// プッシュ購読(新着を知らせる仕組み)の状態.
+    ///
+    /// 購読の作成に失敗してもアプリはポーリングで動き続けるため, 以前は
+    /// 失敗がログにしか出ず「通知だけが永久に来ない」状態に気付けなかった.
+    /// 画面に出せるよう状態として持つ.
+    enum PushSubscriptionStatus: Equatable {
+        case unknown
+        case configuring
+        case active
+        case failed(AppError)
+    }
+
+    private(set) var pushSubscriptionStatus: PushSubscriptionStatus = .unknown
+
     // MARK: - 依存
 
     let backend: any ChatBackend
@@ -177,11 +191,22 @@ final class ChatStore {
         await refreshFriends()
         flushOutbox()
 
-        // 購読の作成に失敗してもアプリは動く(ポーリングで代替する).
+        await configurePushSubscriptions()
+    }
+
+    /// プッシュ購読を用意する.
+    ///
+    /// 失敗してもアプリは動く(定期ポーリングで新着に気付く)が, 通知は届かなく
+    /// なるため, 結果を状態として残してプロフィール画面から確認できるようにする.
+    func configurePushSubscriptions() async {
+        pushSubscriptionStatus = .configuring
         do {
             try await backend.configureSubscriptions()
+            pushSubscriptionStatus = .active
         } catch {
+            let appError = AppError.wrap(error)
             Log.push.notice("push subscriptions unavailable; falling back to polling")
+            pushSubscriptionStatus = .failed(appError)
         }
     }
 

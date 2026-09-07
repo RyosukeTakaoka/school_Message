@@ -22,6 +22,7 @@ enum Palette {
 
     static let unreadBadge = Color.accentColor
     static let failure = Color.red
+    static let success = Color.green
     static let subdued = Color.secondary
 
     /// アバターの背景色. ID から決まるので, 同じ人はいつも同じ色になる.

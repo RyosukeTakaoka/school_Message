@@ -32,6 +32,20 @@ final class PushNotificationService: NSObject {
 
     // MARK: - 登録
 
+    /// APNs への端末登録だけを行う(通知の許可ダイアログは出さない).
+    ///
+    /// サイレント通知(`content-available`)は通知の許可が無くても届き,
+    /// アプリを起こして新着を取り込むために使える. 一方で, 端末が APNs に
+    /// 登録されていないとサイレント通知自体が届かない.
+    ///
+    /// 許可を求めるのは最初のチャットを開いた時点のままにしつつ, 登録だけは
+    /// 起動直後に済ませることで, 「許可する前でも相手の送信が自動で画面に出る」
+    /// 状態にする. 登録自体はダイアログを伴わないので, 利用者の邪魔をしない.
+    func registerForRemoteNotifications() {
+        UNUserNotificationCenter.current().delegate = self
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+
     /// 通知の許可を求め, APNs に登録する.
     ///
     /// 許可が得られなくてもアプリは動く(定期ポーリングで新着に気付く)ので,

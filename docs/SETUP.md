@@ -128,10 +128,35 @@ Xcode 側でコンテナ名を選び直すだけで揃います。
 | ユーザ検索で見つからない | 相手がまだプロフィール登録をしていない／`handle` の QUERYABLE 未設定 |
 | 「このチャットの鍵を取得できませんでした」 | `ConversationKey` のインデックス未設定。または相手の公開鍵が未登録（相手が一度アプリを開けば解決） |
 | 「未知のデータ形式です(Users)」 | 過去バージョンのバグ（`UserProfile` の recordName が CloudKit 予約の `Users` システムレコードと衝突していた）。最新の `main`/作業ブランチを pull して再ビルドすれば直ります。CloudKit Dashboard 側の設定変更は不要です |
-| 通知が来ない | 実機か確認。`aps-environment` と Push Notifications capability を確認 |
+| 通知が来ない | まず**プロフィール画面の「新着の受信設定」**を確認してください。「未設定」と出ている場合は理由が表示されます（多くは Production のスキーマ／インデックス不足）。「有効」なのに届かない場合は、実機か、`aps-environment` と Push Notifications capability、iOS の設定アプリでの通知許可を確認してください |
 | Production で動かない | Development のスキーマを「Deploy Schema Changes」で本番へ反映していない |
 | グループ作成だけ失敗する（`production schema` を含むエラー） | グループでしか使わないフィールド（`Conversation.titleCipher` / `imageCipher`）や `ConversationLeave` が Production のスキーマに無い状態です。**Development 環境で一度グループを作成・退出してフィールドを自動生成させてから**、CloudKit Dashboard で「Deploy Schema Changes」を実行してください |
 | 「既読」が付かない | 相手がそのチャットを開いていない（開いた時点で既読が記録されます）。相手が開いているのに付かない場合は、相手の端末が最新版か確認してください |
+
+## 公開前にやること（プライバシーポリシー・利用規約）
+
+1. [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) と [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md) の
+   `〔 〕` で囲んだ箇所（開発者名・連絡先・管轄裁判所）をすべて記入する。
+2. **公開 URL を用意する。** App Store Connect はプライバシーポリシーの URL を必須で求めます。
+   最も手軽なのは GitHub Pages です（リポジトリの Settings → Pages → Source を
+   `main` / `docs` にすると `https://<ユーザ名>.github.io/school_Message/PRIVACY_POLICY.html`
+   のような URL が発行されます）。リポジトリが公開設定なら、`docs/PRIVACY_POLICY.md` の
+   GitHub 上の URL をそのまま使うこともできます。
+3. App Store Connect → App のページ → 「App のプライバシー」で、収集するデータを申告する。
+   本アプリの実態に沿った回答は次のとおりです。
+
+   | 質問 | 回答 |
+   |---|---|
+   | 連絡先情報（メール・電話番号） | 収集しない |
+   | 名前 | **収集する**（表示名）。用途は「App の機能」、**トラッキングには使用しない**、ユーザーIDに**リンクされる** |
+   | ユーザー ID | **収集する**（ハンドル・iCloud 識別子）。用途は「App の機能」 |
+   | 写真またはビデオ | **収集する**（プロフィール画像・送信されたメディア）。用途は「App の機能」 |
+   | その他のユーザーコンテンツ | **収集する**（メッセージ）。用途は「App の機能」 |
+   | 位置情報 / 購入履歴 / 検索履歴 / 使用状況データ / 診断 / 広告データ | 収集しない |
+   | トラッキング | **行わない** |
+
+4. 「App の使用許諾契約（EULA）」に利用規約を貼るか、URL を指定する。指定しない場合は
+   Apple の標準 EULA が適用されますが、本アプリは免責条項が重要なので指定を推奨します。
 
 ## 開発中に便利なこと
 
