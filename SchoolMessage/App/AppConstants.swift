@@ -7,6 +7,21 @@ enum AppConstants {
     /// CloudKit コンテナ識別子. Xcode の Signing & Capabilities と一致させること.
     static let cloudKitContainerIdentifier = "iCloud.com.schoolmessage.app"
 
+    enum Legal {
+        /// 起動時に利用規約・プライバシーポリシーへの同意を要求するか.
+        ///
+        /// 友人・知人など身内だけで使っている段階では, App Store Connect 側の
+        /// 準備(プライバシーポリシーの公開 URL, 「App のプライバシー」申告,
+        /// 開発者名・連絡先の記入)を済ませなくても TestFlight に出せるよう,
+        /// 既定で無効にしている.
+        ///
+        /// 本文自体は `LegalText.swift` / `docs/PRIVACY_POLICY.md` /
+        /// `docs/TERMS_OF_SERVICE.md` に残したままなので, 配布先を広げる
+        /// (学校の生徒全体, 一般公開など)タイミングで `true` に戻すだけでよい.
+        /// その際は `docs/SETUP.md` の「公開前にやること」の手順を先に行うこと.
+        static let requiresConsent = false
+    }
+
     enum Layout {
         /// NavigationSplitView のサイドバー幅. iPad 縦向きでも一覧が読める幅を確保する.
         static let sidebarIdealWidth: CGFloat = 320

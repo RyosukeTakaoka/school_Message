@@ -7,11 +7,20 @@ struct RootView: View {
 
     @Environment(AppEnvironment.self) private var environment
 
+    /// 同意画面を出す必要があるか.
+    ///
+    /// `AppConstants.Legal.requiresConsent` が `false` の間(身内だけで使う段階)は,
+    /// 未同意でも画面を素通りする. 画面自体・文書は消していないので,
+    /// フラグを `true` に戻すだけで同意を要求する状態に復帰できる.
+    private var needsConsentGate: Bool {
+        AppConstants.Legal.requiresConsent && !environment.consent.hasAgreedToCurrentVersion
+    }
+
     var body: some View {
         Group {
             // 同意はどの画面よりも先に取る. iCloud の状態に関わらず,
             // 規約に同意していない状態でアプリの中身を見せない.
-            if !environment.consent.hasAgreedToCurrentVersion {
+            if needsConsentGate {
                 ConsentGateView()
                     .environment(environment.consent)
             } else {
@@ -28,7 +37,7 @@ struct RootView: View {
             }
         }
         .animation(.default, value: environment.store.phase)
-        .animation(.default, value: environment.consent.hasAgreedToCurrentVersion)
+        .animation(.default, value: needsConsentGate)
     }
 }
 

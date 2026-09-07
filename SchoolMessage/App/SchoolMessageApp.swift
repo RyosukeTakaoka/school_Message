@@ -39,12 +39,14 @@ struct SchoolMessageApp: App {
         }
     }
 
+    /// 同意が要らない設定(`AppConstants.Legal.requiresConsent == false`)か,
     /// 規約に同意済みのときだけ, iCloud への接続を開始する.
     ///
-    /// 同意前にサーバへ問い合わせないことで, 「同意していないのに通信が
-    /// 始まっている」状態を作らない. 同意した瞬間に呼び直される.
+    /// 同意を求めている段階では, 同意前にサーバへ問い合わせないことで
+    /// 「同意していないのに通信が始まっている」状態を作らない. 同意した瞬間に
+    /// 呼び直される.
     private func startIfConsented() async {
-        guard environment.consent.hasAgreedToCurrentVersion else { return }
+        guard !AppConstants.Legal.requiresConsent || environment.consent.hasAgreedToCurrentVersion else { return }
         // サイレント通知でアプリを起こせるようにするための登録.
         // 許可のダイアログは出ない(許可を求めるのは最初のチャットを開いたとき).
         environment.pushService.registerForRemoteNotifications()
