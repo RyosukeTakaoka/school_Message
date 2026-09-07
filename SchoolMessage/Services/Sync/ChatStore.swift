@@ -231,6 +231,7 @@ final class ChatStore {
     private func startPolling() {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
+            var lastListRefresh = Date.now
             while !Task.isCancelled {
                 guard let self else { return }
                 let interval = self.selectedConversationID == nil
@@ -239,10 +240,17 @@ final class ChatStore {
                 try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled else { return }
                 guard self.networkMonitor.isOnline else { continue }
+
+                // 短い間隔で回すのは開いている会話だけにする.
+                // 一覧の取得は問い合わせが多く, 数秒ごとに実行すると
+                // CloudKit への負荷と電池の消費が見合わないため.
                 if let selected = self.selectedConversationID {
                     await self.refreshMessages(in: selected)
                 }
-                await self.refreshConversations()
+                if Date.now.timeIntervalSince(lastListRefresh) >= AppConstants.Timing.fallbackPollInterval {
+                    lastListRefresh = .now
+                    await self.refreshConversations()
+                }
             }
         }
     }
@@ -268,7 +276,17 @@ final class ChatStore {
         defer { isRefreshingConversations = false }
 
         do {
-            let fetched = try await backend.fetchConversations()
+            var fetched = try await backend.fetchConversations()
+            // 他の参加者の既読位置は会話ごとに個別取得しているため, 一覧の
+            // 取得結果には入っていない. そのまま入れ替えると開いているチャットの
+            // 「既読」が定期更新のたびに消えてしまうので, 既に持っていれば引き継ぐ.
+            let knownReceipts = Dictionary(
+                conversations.map { ($0.id, $0.readReceipts) },
+                uniquingKeysWith: { current, _ in current }
+            )
+            for index in fetched.indices where fetched[index].readReceipts.isEmpty {
+                fetched[index].readReceipts = knownReceipts[fetched[index].id] ?? [:]
+            }
             conversations = fetched
             await loadMissingProfiles(for: fetched)
         } catch {

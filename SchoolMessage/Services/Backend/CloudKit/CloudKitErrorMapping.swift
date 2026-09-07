@@ -13,6 +13,17 @@ enum CloudKitErrorMapping {
             return AppError.wrap(error)
         }
 
+        // エラーコードより先に判定する. 環境によって invalidArguments と
+        // serverRejectedRequest のどちらでも返ってくるため.
+        if isProductionSchemaError(ckError) {
+            return .underlying(
+                debugAnnotated(
+                    String(localized: "サーバ側の設定がこの機能に追いついていません。CloudKit Dashboard で「Deploy Schema Changes」を実行し、Development のスキーマを Production へ反映してください"),
+                    ckError
+                )
+            )
+        }
+
         switch ckError.code {
         case .networkUnavailable, .networkFailure:
             return .offline
@@ -75,6 +86,20 @@ enum CloudKitErrorMapping {
         #else
         return message
         #endif
+    }
+
+    /// Production 環境のスキーマに無いレコードタイプ / フィールドを
+    /// 作ろうとして拒否されたか.
+    ///
+    /// CloudKit は Development ではレコードタイプもフィールドも自動生成するが,
+    /// Production では生成しない. TestFlight / App Store 版は必ず Production を
+    /// 使うため, Development でまだ一度も使われていない機能(例: グループ名を入れる
+    /// `titleCipher`)を本番で最初に実行したときにここへ来る.
+    ///
+    /// CloudKit がサーバから返すこの文言は端末の言語設定に関わらず英語なので,
+    /// 文字列で判定する. 一致しなければ通常のコード別処理に落ちるだけで害はない.
+    private static func isProductionSchemaError(_ ckError: CKError) -> Bool {
+        ckError.localizedDescription.lowercased().contains("production schema")
     }
 
     /// このエラーで自動リトライしてよいか.

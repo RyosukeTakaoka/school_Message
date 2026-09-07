@@ -100,6 +100,13 @@ struct CreateGroupView: View {
             .sheet(isPresented: $isShowingFriends) {
                 FriendsView()
             }
+            // 作成に失敗したときの理由を必ず画面に出す.
+            // これが無いと「作成を押しても何も起きない」ように見えてしまう.
+            .safeAreaInset(edge: .top) {
+                if let error = store.banner {
+                    ErrorBannerView(error: error) { store.setBanner(nil) }
+                }
+            }
             .task { await store.refreshFriends() }
         }
     }

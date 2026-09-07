@@ -85,13 +85,18 @@ recordName: `convkey-<会話>-<受信者>-<作成者>`
 | `conversation` | Reference | QUERYABLE | 対象の会話 |
 | `senderID` | String | QUERYABLE | 送信者（`creatorUserRecordID` と突き合わせて検証） |
 | `sentAt` | Date/Time | **QUERYABLE, SORTABLE** | 並び替えとページングに必須 |
-| `payload` | Bytes | — | 暗号化した本文とメディアのメタデータ |
+| `payload` | Bytes | — | 暗号化した本文・メディアのメタデータ・返信先（引用） |
 | `mediaAsset` | Asset | — | 暗号化した写真・動画の本体 |
 | `thumbnailCipher` | Bytes | — | 暗号化したサムネイル（レコードに同梱） |
 | `participantIDs` | String (List) | **QUERYABLE** | プッシュ購読の述語に必要 |
 | `senderDisplayName` | String | — | プッシュ通知に出す送信者名（平文） |
 
 recordName: クライアントが採番した UUID（再送しても同じ = 重複しない）
+
+> **返信（引用）はフィールドを増やしていません。** 返信先のメッセージ ID・送信者・
+> 本文の抜粋は `payload` の中（暗号化される JSON）に入れています。
+> こうすることで、引用文が平文でサーバに残らず、レコードタイプの変更も要らないため
+> Production へのスキーマ再デプロイなしで機能を追加できます。
 
 ## ReadState
 
@@ -102,6 +107,11 @@ recordName: クライアントが採番した UUID（再送しても同じ = 重
 | `lastReadAt` | Date/Time | QUERYABLE, SORTABLE | ここまで読んだ |
 
 recordName: `readstate-<会話>-<ユーザ>`（本人しか書けない）
+
+> 「自分の送信に付く既読」は、同じ会話の**他の参加者**の `ReadState` を読んで求めます。
+> recordName が決まっているので、参加者一覧から recordName を組み立てて一括取得しており、
+> `conversation` のインデックス設定に依存しません（インデックスが無くても既読は動きます）。
+> 取得した既読は「申告された `userID` とサーバが押印した作成者が一致するもの」だけ採用します。
 
 ## ConversationLeave
 

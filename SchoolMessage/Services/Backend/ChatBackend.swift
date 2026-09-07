@@ -92,6 +92,9 @@ protocol ChatBackend: Sendable {
     /// 既読位置を保存する.
     func markRead(conversationID: ConversationID, upTo date: Date) async throws
 
+    /// 自分以外の参加者の既読位置. 「自分の送信に既読が付いたか」の表示に使う.
+    func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date]
+
     // MARK: メディア
 
     /// 添付の本体を復号してローカルにダウンロードし, その URL を返す.

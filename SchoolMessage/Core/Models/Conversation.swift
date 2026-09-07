@@ -43,6 +43,13 @@ struct Conversation: Identifiable, Hashable, Sendable {
     /// 未読件数(サーバから取得したメッセージから導出).
     var unreadCount: Int
 
+    /// 自分以外の参加者がどこまで読んだか.
+    ///
+    /// 「自分が送ったメッセージに既読が付いたか」を出すために使う.
+    /// メッセージ 1 件ごとの既読フラグではなく参加者ごとの到達点を持つのは,
+    /// 既読化の書き込みを会話あたり 1 レコードに抑えるため(`ReadState`).
+    var readReceipts: [UserID: Date]
+
     init(
         id: ConversationID = .generate(),
         kind: ConversationKind,
@@ -53,7 +60,8 @@ struct Conversation: Identifiable, Hashable, Sendable {
         createdAt: Date = .now,
         lastMessage: MessageSummary? = nil,
         lastReadAt: Date = .distantPast,
-        unreadCount: Int = 0
+        unreadCount: Int = 0,
+        readReceipts: [UserID: Date] = [:]
     ) {
         self.id = id
         self.kind = kind
@@ -65,6 +73,20 @@ struct Conversation: Identifiable, Hashable, Sendable {
         self.lastMessage = lastMessage
         self.lastReadAt = lastReadAt
         self.unreadCount = unreadCount
+        self.readReceipts = readReceipts
+    }
+
+    /// `date` の時点までを読んだ, 自分以外の参加者の人数.
+    ///
+    /// 1 対 1 では 0 か 1 になり, そのまま「既読」の有無として使える.
+    /// グループでは「既読 3」のように人数を出す.
+    func readCount(upTo date: Date, excluding me: UserID) -> Int {
+        readReceipts.reduce(into: 0) { total, entry in
+            let (userID, lastReadAt) = entry
+            // 退出した人の記録が残っていても数えない.
+            guard userID != me, participantIDs.contains(userID) else { return }
+            if lastReadAt >= date { total += 1 }
+        }
     }
 
     /// 一覧の並び順に使う時刻. メッセージがまだ無い会話は作成時刻を使う.

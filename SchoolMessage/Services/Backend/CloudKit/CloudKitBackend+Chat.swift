@@ -384,7 +384,18 @@ extension CloudKitBackend {
 
         let profiles = try await fetchProfiles(ids: Array(memberIDs))
         guard profiles.count == memberIDs.count else {
-            throw AppError.underlying(String(localized: "一部のメンバーの情報を取得できませんでした"))
+            // 誰の情報が取れなかったのかまで出す. 「相手がまだプロフィール登録を
+            // 済ませていない」場合が大半なので, 原因に辿り着けるようにする.
+            let missing = memberIDs.subtracting(profiles.map(\.id))
+            throw AppError.underlying(
+                String(localized: "メンバー \(missing.count) 人の情報を取得できませんでした。相手がプロフィール登録を済ませているか確認してください")
+            )
+        }
+
+        // 公開鍵が無い相手が 1 人でもいると, 会話レコードだけが残って
+        // 誰も開けないグループができてしまう. 保存する前に弾く.
+        if let unreachable = profiles.first(where: { !$0.canReceiveEncryptedMessages }) {
+            throw AppError.recipientHasNoPublicKey(displayName: unreachable.displayName)
         }
 
         let conversationID = ConversationID.generate()
@@ -636,6 +647,7 @@ extension CloudKitBackend {
             content: content,
             createdAt: raw.sentAt,
             deliveryState: .sent,
+            replyTo: payload.replyTo,
             isRead: true   // 既読判定は会話の lastReadAt との比較で上位層が付け直す
         )
     }
@@ -665,9 +677,12 @@ extension CloudKitBackend {
             guard !trimmed.isEmpty else {
                 throw AppError.underlying(String(localized: "メッセージが空です"))
             }
-            payload = MessagePayload(text: String(trimmed.prefix(AppConstants.Validation.messageTextMaxLength)))
+            payload = MessagePayload(
+                text: String(trimmed.prefix(AppConstants.Validation.messageTextMaxLength)),
+                replyTo: outgoing.replyTo
+            )
         case .media(let media):
-            payload = MessagePayload(media: media.metadata)
+            payload = MessagePayload(media: media.metadata, replyTo: outgoing.replyTo)
         }
 
         let record = CKRecord(
@@ -783,6 +798,45 @@ extension CloudKitBackend {
         } catch {
             throw CloudKitErrorMapping.appError(from: error)
         }
+    }
+
+    /// 自分以外の参加者の既読位置.
+    ///
+    /// クエリではなく recordName を組み立てた一括取得にしている.
+    /// `ReadState` の recordName は `readstate-<会話>-<ユーザ>` と決まっているので
+    /// 参加者一覧から機械的に求められ, インデックス(QUERYABLE)の有無に依存しない.
+    /// 会話 1 件あたり 1 往復で済む点も, チャットを開いている間の定期更新に向く.
+    func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date] {
+        let me = try await currentUserID()
+        let others = try await participants(of: conversationID, me: me).filter { $0 != me }
+        guard !others.isEmpty else { return [:] }
+
+        let recordIDs = others.map {
+            CKRecord.ID(recordName: CKSchema.ReadState.recordName(conversation: conversationID, user: $0))
+        }
+        let results: [CKRecord.ID: Result<CKRecord, any Error>]
+        do {
+            results = try await database.records(for: recordIDs)
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+
+        var receipts: [UserID: Date] = [:]
+        for result in results.values {
+            // まだ一度も読んでいない相手のレコードは存在しない(unknownItem). 既読なしとして扱う.
+            guard case .success(let record) = result,
+                  let rawUser = record[CKSchema.ReadState.userID] as? String,
+                  let lastReadAt = record[CKSchema.ReadState.lastReadAt] as? Date
+            else { continue }
+            // 他人が代わりに書いた「既読」を信用しない. 申告された userID と
+            // サーバが押印した作成者が一致するものだけ採用する.
+            guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == rawUser else {
+                Log.backend.notice("ignoring read state with mismatched creator")
+                continue
+            }
+            receipts[UserID(rawUser)] = lastReadAt
+        }
+        return receipts
     }
 
     // MARK: - メディア取得

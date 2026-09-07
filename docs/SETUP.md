@@ -130,6 +130,8 @@ Xcode 側でコンテナ名を選び直すだけで揃います。
 | 「未知のデータ形式です(Users)」 | 過去バージョンのバグ（`UserProfile` の recordName が CloudKit 予約の `Users` システムレコードと衝突していた）。最新の `main`/作業ブランチを pull して再ビルドすれば直ります。CloudKit Dashboard 側の設定変更は不要です |
 | 通知が来ない | 実機か確認。`aps-environment` と Push Notifications capability を確認 |
 | Production で動かない | Development のスキーマを「Deploy Schema Changes」で本番へ反映していない |
+| グループ作成だけ失敗する（`production schema` を含むエラー） | グループでしか使わないフィールド（`Conversation.titleCipher` / `imageCipher`）や `ConversationLeave` が Production のスキーマに無い状態です。**Development 環境で一度グループを作成・退出してフィールドを自動生成させてから**、CloudKit Dashboard で「Deploy Schema Changes」を実行してください |
+| 「既読」が付かない | 相手がそのチャットを開いていない（開いた時点で既読が記録されます）。相手が開いているのに付かない場合は、相手の端末が最新版か確認してください |
 
 ## 開発中に便利なこと
 

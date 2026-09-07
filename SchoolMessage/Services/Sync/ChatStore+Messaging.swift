@@ -46,6 +46,7 @@ extension ChatStore {
 
             merge(fetched, into: conversationID)
             await loadMissingSenderProfiles(from: fetched)
+            await refreshReadReceipts(in: conversationID)
         } catch {
             let appError = AppError.wrap(error)
             if appError != .offline {
@@ -100,6 +101,18 @@ extension ChatStore {
         messagesByConversation[conversationID] = current
     }
 
+    /// 相手がどこまで読んだかを取り直す(自分の送信に付く「既読」の更新).
+    ///
+    /// 失敗しても会話の表示自体には影響しないので, エラーはユーザに出さない.
+    func refreshReadReceipts(in conversationID: ConversationID) async {
+        guard let receipts = try? await backend.fetchReadReceipts(in: conversationID) else { return }
+        guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { return }
+        // 数秒ごとに呼ばれるので, 変化が無いときは代入しない
+        // (代入するだけで画面全体の再描画が走るため).
+        guard conversations[index].readReceipts != receipts else { return }
+        conversations[index].readReceipts = receipts
+    }
+
     private func isRead(_ message: Message, in conversationID: ConversationID) -> Bool {
         guard let conversation = conversation(conversationID) else { return true }
         if message.senderID == currentUserID { return true }
@@ -118,27 +131,37 @@ extension ChatStore {
 
     // MARK: - 送信
 
-    func sendText(_ text: String, in conversationID: ConversationID) async {
+    func sendText(
+        _ text: String,
+        in conversationID: ConversationID,
+        replyTo: ReplyReference? = nil
+    ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let me = currentUserID else { return }
 
         let outgoing = OutgoingMessage(
             conversationID: conversationID,
             senderID: me,
-            body: .text(String(trimmed.prefix(AppConstants.Validation.messageTextMaxLength)))
+            body: .text(String(trimmed.prefix(AppConstants.Validation.messageTextMaxLength))),
+            replyTo: replyTo
         )
         await enqueueAndShow(outgoing)
     }
 
     /// 写真を送る. 圧縮とサムネイル生成を済ませてからキューに積む.
-    func sendImage(originalData: Data, in conversationID: ConversationID) async {
+    func sendImage(
+        originalData: Data,
+        in conversationID: ConversationID,
+        replyTo: ReplyReference? = nil
+    ) async {
         guard let me = currentUserID else { return }
         do {
             let media = try await processor.prepareImage(originalData: originalData)
             let outgoing = OutgoingMessage(
                 conversationID: conversationID,
                 senderID: me,
-                body: .media(media)
+                body: .media(media),
+                replyTo: replyTo
             )
             await enqueueAndShow(outgoing)
         } catch {
@@ -147,14 +170,19 @@ extension ChatStore {
     }
 
     /// 動画を送る. 再エンコードに時間がかかるので, 完了後にキューへ積む.
-    func sendVideo(sourceURL: URL, in conversationID: ConversationID) async {
+    func sendVideo(
+        sourceURL: URL,
+        in conversationID: ConversationID,
+        replyTo: ReplyReference? = nil
+    ) async {
         guard let me = currentUserID else { return }
         do {
             let media = try await processor.prepareVideo(sourceURL: sourceURL)
             let outgoing = OutgoingMessage(
                 conversationID: conversationID,
                 senderID: me,
-                body: .media(media)
+                body: .media(media),
+                replyTo: replyTo
             )
             await enqueueAndShow(outgoing)
         } catch {

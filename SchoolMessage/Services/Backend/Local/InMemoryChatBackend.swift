@@ -17,6 +17,8 @@ actor InMemoryChatBackend: ChatBackend {
     private var conversations: [ConversationID: Conversation] = [:]
     private var messages: [ConversationID: [Message]] = [:]
     private var readStates: [ConversationID: Date] = [:]
+    /// 会話 → (参加者 → 既読位置). デモでも「既読」表示を確認できるようにする.
+    private var readReceipts: [ConversationID: [UserID: Date]] = [:]
 
     init(seeded: Bool = true) {
         let owner = UserProfile(
@@ -57,12 +59,31 @@ actor InMemoryChatBackend: ChatBackend {
         conversations[direct.id] = direct
         conversations[group.id] = group
 
+        let lunchQuestion = Message(
+            conversationID: direct.id,
+            senderID: tanaka.id,
+            content: .text("今日どこで昼食べる？"),
+            createdAt: .now.addingTimeInterval(-600)
+        )
         messages[direct.id] = [
-            Message(conversationID: direct.id, senderID: tanaka.id, content: .text("今日どこで昼食べる？"), createdAt: .now.addingTimeInterval(-600)),
-            Message(conversationID: direct.id, senderID: me.id, content: .text("食堂！"), createdAt: .now.addingTimeInterval(-540))
+            lunchQuestion,
+            Message(
+                conversationID: direct.id,
+                senderID: me.id,
+                content: .text("食堂！"),
+                createdAt: .now.addingTimeInterval(-540),
+                replyTo: ReplyReference(replyingTo: lunchQuestion)
+            )
         ]
         messages[group.id] = [
             Message(conversationID: group.id, senderID: yamada.id, content: .text("明日の体育祭どうする？"), createdAt: .now.addingTimeInterval(-300))
+        ]
+
+        // 自分が送った「食堂！」には既読が付いている状態にしておく.
+        readReceipts[direct.id] = [tanaka.id: .now.addingTimeInterval(-500)]
+        readReceipts[group.id] = [
+            tanaka.id: .now.addingTimeInterval(-120),
+            sato.id: .now.addingTimeInterval(-60)
         ]
     }
 
@@ -125,6 +146,7 @@ actor InMemoryChatBackend: ChatBackend {
             let lastReadAt = readStates[conversation.id] ?? .distantPast
             copy.lastReadAt = lastReadAt
             copy.unreadCount = history.filter { $0.createdAt > lastReadAt && $0.senderID != me.id }.count
+            copy.readReceipts = readReceipts[conversation.id] ?? [:]
             if let last = history.last {
                 copy.lastMessage = MessageSummary(
                     senderID: last.senderID,
@@ -205,6 +227,10 @@ actor InMemoryChatBackend: ChatBackend {
     func markRead(conversationID: ConversationID, upTo date: Date) async throws {
         let current = readStates[conversationID] ?? .distantPast
         readStates[conversationID] = max(current, date)
+    }
+
+    func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date] {
+        readReceipts[conversationID] ?? [:]
     }
 
     // MARK: - メディア

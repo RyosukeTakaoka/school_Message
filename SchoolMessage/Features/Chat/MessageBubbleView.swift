@@ -15,6 +15,10 @@ struct MessageBubbleView: View {
     var onTapMedia: (MediaAttachment) -> Void
     var onRetry: () -> Void
     var onCancel: () -> Void
+    /// 「返信」を選んだ. 入力欄に引用を出すのは呼び出し側の担当.
+    var onReply: () -> Void = {}
+    /// 引用をタップした. 元メッセージまでスクロールする.
+    var onTapQuote: (MessageID) -> Void = { _ in }
 
     private var store: ChatStore { environment.store }
     private var isOutgoing: Bool { message.senderID == store.currentUserID }
@@ -35,7 +39,10 @@ struct MessageBubbleView: View {
                         .padding(.leading, 4)
                 }
 
+                quotedOriginal
+
                 bubble
+                    .contextMenu { replyMenu }
 
                 footer
             }
@@ -61,6 +68,60 @@ struct MessageBubbleView: View {
 
     private var showsSenderName: Bool {
         conversation.kind == .group && !isOutgoing && !isGroupedWithPrevious
+    }
+
+    /// 返信の引用. 元メッセージの送信者と抜粋を吹き出しの上に出す.
+    @ViewBuilder
+    private var quotedOriginal: some View {
+        if let reply = message.replyTo {
+            Button {
+                onTapQuote(reply.messageID)
+            } label: {
+                HStack(spacing: 6) {
+                    // 引用であることを縦棒で示す. 色だけに頼らない表現にする.
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(store.displayName(for: reply.senderID))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Palette.subdued)
+                        Text(reply.preview)
+                            .font(.caption)
+                            .foregroundStyle(Palette.subdued)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(maxWidth: 380, alignment: .leading)
+                .background(Palette.incomingBubble.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(String(localized: "返信元のメッセージへ移動します"))
+        }
+    }
+
+    /// 吹き出しの長押しメニュー.
+    ///
+    /// 送信待ちのメッセージにも返信できる. 引用は本文の写しを自分で持つので,
+    /// 元が送信中でも表示は崩れず, 送信キューは投入順に送るため順序も保たれる.
+    @ViewBuilder
+    private var replyMenu: some View {
+        Button {
+            onReply()
+        } label: {
+            Label(String(localized: "返信"), systemImage: "arrowshape.turn.up.left")
+        }
+        if case .text(let body) = message.content {
+            Button {
+                UIPasteboard.general.string = body
+            } label: {
+                Label(String(localized: "コピー"), systemImage: "doc.on.doc")
+            }
+        }
     }
 
     @ViewBuilder
@@ -167,10 +228,17 @@ struct MessageBubbleView: View {
     private var footer: some View {
         switch message.deliveryState {
         case .sent:
-            Text(DateDisplay.messageTimestamp(message.createdAt))
-                .font(.caption2)
-                .foregroundStyle(Palette.subdued)
-                .padding(.horizontal, 4)
+            HStack(spacing: 4) {
+                if let readLabel {
+                    Text(readLabel)
+                        .font(.caption2)
+                        .foregroundStyle(Palette.subdued)
+                }
+                Text(DateDisplay.messageTimestamp(message.createdAt))
+                    .font(.caption2)
+                    .foregroundStyle(Palette.subdued)
+            }
+            .padding(.horizontal, 4)
 
         case .sending:
             HStack(spacing: 4) {
@@ -197,15 +265,33 @@ struct MessageBubbleView: View {
         }
     }
 
+    /// 自分が送ったメッセージにだけ付ける「既読」表示.
+    ///
+    /// 相手がまだ読んでいない間は何も出さない. 「未読」と明示すると
+    /// 未読であること自体を責めるような圧力になりやすいため, 付いたときだけ出す.
+    private var readLabel: String? {
+        guard isOutgoing, let me = store.currentUserID else { return nil }
+        let count = conversation.readCount(upTo: message.createdAt, excluding: me)
+        guard count > 0 else { return nil }
+        // グループでは何人が読んだかまで出す.
+        return conversation.kind == .group
+            ? String(localized: "既読 \(count)")
+            : String(localized: "既読")
+    }
+
     private var accessibilityLabel: String {
         var parts: [String] = []
         parts.append(isOutgoing ? String(localized: "自分") : store.displayName(for: message.senderID))
+        if let reply = message.replyTo {
+            parts.append(String(localized: "\(store.displayName(for: reply.senderID))さんへの返信"))
+        }
         parts.append(message.content.previewText)
         parts.append(DateDisplay.accessibilityTimestamp(message.createdAt))
         switch message.deliveryState {
         case .sending: parts.append(String(localized: "送信中"))
         case .failed: parts.append(String(localized: "送信に失敗しました"))
-        case .sent: break
+        case .sent:
+            if let readLabel { parts.append(readLabel) }
         }
         return parts.joined(separator: "、")
     }

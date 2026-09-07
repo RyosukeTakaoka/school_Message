@@ -108,6 +108,14 @@ struct ConversationInfoView: View {
                 }
                 Button(String(localized: "キャンセル"), role: .cancel) {}
             }
+            // メンバー追加や退出が失敗した理由を画面に出す.
+            .safeAreaInset(edge: .top) {
+                if let error = store.banner {
+                    ErrorBannerView(error: error) { store.setBanner(nil) }
+                }
+            }
+            // 友達を追加した直後にこの画面を開いても候補に出るようにする.
+            .task { await store.refreshFriends() }
         }
     }
 

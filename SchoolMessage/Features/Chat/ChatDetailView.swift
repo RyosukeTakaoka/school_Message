@@ -9,6 +9,10 @@ struct ChatDetailView: View {
     @State private var viewingMedia: MediaAttachment?
     @State private var isShowingInfo = false
     @State private var isLoadingOlder = false
+    /// 返信しようとしている元メッセージ. 入力欄に引用として出す.
+    @State private var replyingTo: Message?
+    /// 引用をタップして移動したときに, 一瞬強調する対象.
+    @State private var highlightedMessageID: MessageID?
 
     private var store: ChatStore { environment.store }
 
@@ -39,10 +43,21 @@ struct ChatDetailView: View {
                                 },
                                 onCancel: {
                                     Task { await store.cancelSending(message.id, in: conversation.id) }
+                                },
+                                onReply: { replyingTo = message },
+                                onTapQuote: { original in
+                                    scrollToOriginal(original, using: proxy)
                                 }
                             )
                             .id(message.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .background {
+                                // 引用から飛んできた元メッセージを短く強調する.
+                                if highlightedMessageID == message.id {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(Color.accentColor.opacity(0.15))
+                                }
+                            }
                         }
                     }
 
@@ -67,7 +82,12 @@ struct ChatDetailView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MessageComposerView(conversationID: conversation.id)
+            MessageComposerView(conversationID: conversation.id, replyingTo: $replyingTo)
+        }
+        .safeAreaInset(edge: .top) {
+            if let error = store.banner {
+                ErrorBannerView(error: error) { store.setBanner(nil) }
+            }
         }
         .navigationTitle(store.title(for: conversation))
         .navigationBarTitleDisplayMode(.inline)
@@ -95,6 +115,27 @@ struct ChatDetailView: View {
             // 通知の許可は起動直後ではなく, 実際に会話を始めた時点で求める.
             // 何のための通知かが伝わっている状態のほうが許可されやすい.
             await environment.pushService.requestAuthorizationAndRegister()
+        }
+    }
+
+    // MARK: - 動作
+
+    /// 引用から元メッセージへ移動する.
+    ///
+    /// 元が読み込み済みの範囲に無い場合(古い履歴)は, 黙って何も起きないと
+    /// 壊れて見えるので, 読み込みを促す案内を出す.
+    private func scrollToOriginal(_ messageID: MessageID, using proxy: ScrollViewProxy) {
+        guard messages.contains(where: { $0.id == messageID }) else {
+            store.setBanner(.underlying(String(localized: "返信元のメッセージはまだ読み込まれていません。「以前のメッセージを読み込む」で遡ってください")))
+            return
+        }
+        withAnimation(.easeOut(duration: 0.25)) {
+            proxy.scrollTo(messageID, anchor: .center)
+            highlightedMessageID = messageID
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation { highlightedMessageID = nil }
         }
     }
 

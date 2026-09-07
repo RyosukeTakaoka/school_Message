@@ -43,6 +43,41 @@ enum MessageContent: Hashable, Sendable {
     }
 }
 
+/// 返信先の要約.
+///
+/// 元メッセージの本文は暗号化されて別レコードにあるため, 参照だけを持つと
+/// 引用を出すたびに元レコードの取得と復号が必要になる. 返信を作った時点で
+/// 復号済みの抜粋をここに複製しておくことで,
+/// - 引用の表示に追加の通信が要らない
+/// - 元メッセージが履歴の彼方(未取得のページ)にあっても引用が壊れない
+/// という 2 点を満たす. 抜粋も本文と同じ会話鍵で暗号化されるため,
+/// 会話の外に平文が漏れることはない.
+struct ReplyReference: Hashable, Sendable, Codable {
+
+    /// 返信先のメッセージ. タップして元メッセージへ移動するのに使う.
+    var messageID: MessageID
+    var senderID: UserID
+    /// 引用として表示する抜粋.
+    var preview: String
+
+    /// 引用の長さ上限. 元が長文でも吹き出しが引用で埋まらないようにする.
+    static let previewMaxLength = 80
+
+    init(messageID: MessageID, senderID: UserID, preview: String) {
+        self.messageID = messageID
+        self.senderID = senderID
+        self.preview = String(preview.prefix(Self.previewMaxLength))
+    }
+
+    init(replyingTo message: Message) {
+        self.init(
+            messageID: message.id,
+            senderID: message.senderID,
+            preview: message.content.previewText
+        )
+    }
+}
+
 /// 送信状態. 「送信中のまま無言で止まる」状態を作らないために明示的に持つ.
 enum MessageDeliveryState: Hashable, Sendable {
     /// ローカルには存在するがまだ送信していない / 送信中.
@@ -85,6 +120,9 @@ struct Message: Identifiable, Hashable, Sendable {
 
     var deliveryState: MessageDeliveryState
 
+    /// 返信先(引用). 通常のメッセージでは nil.
+    var replyTo: ReplyReference?
+
     /// この端末のユーザから見て既読か.
     ///
     /// 実データは会話ごとの `lastReadAt` 1 レコードで管理し, ここには導出結果を入れる.
@@ -99,6 +137,7 @@ struct Message: Identifiable, Hashable, Sendable {
         content: MessageContent,
         createdAt: Date = .now,
         deliveryState: MessageDeliveryState = .sent,
+        replyTo: ReplyReference? = nil,
         isRead: Bool = true
     ) {
         self.id = id
@@ -107,6 +146,7 @@ struct Message: Identifiable, Hashable, Sendable {
         self.content = content
         self.createdAt = createdAt
         self.deliveryState = deliveryState
+        self.replyTo = replyTo
         self.isRead = isRead
     }
 
@@ -124,12 +164,22 @@ struct MessagePayload: Hashable, Sendable, Codable {
     var text: String?
     var media: MediaMetadata?
 
-    init(text: String? = nil, media: MediaMetadata? = nil) {
+    /// 返信先(引用).
+    ///
+    /// CloudKit のフィールドではなく暗号化ペイロードの中に入れているのは,
+    /// - 引用文が平文でサーバに残らない
+    /// - レコードタイプの変更が要らない(Production へのスキーマ再デプロイが不要)
+    /// という 2 点のため. 古い版のアプリが読んでも, 未知のキーとして無視される.
+    var replyTo: ReplyReference?
+
+    init(text: String? = nil, media: MediaMetadata? = nil, replyTo: ReplyReference? = nil) {
         self.text = text
         self.media = media
+        self.replyTo = replyTo
     }
 
-    init(content: MessageContent) {
+    init(content: MessageContent, replyTo: ReplyReference? = nil) {
+        self.replyTo = replyTo
         switch content {
         case .text(let body):
             self.text = body

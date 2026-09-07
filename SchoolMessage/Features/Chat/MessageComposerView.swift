@@ -11,6 +11,8 @@ struct MessageComposerView: View {
 
     @Environment(AppEnvironment.self) private var environment
     let conversationID: ConversationID
+    /// 返信先. 設定されている間は入力欄の上に引用を出す.
+    @Binding var replyingTo: Message?
 
     @State private var text: String = ""
     @State private var draft: Draft?
@@ -34,6 +36,10 @@ struct MessageComposerView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let replyingTo {
+                replyPreview(replyingTo)
+                Divider()
+            }
             if let draft {
                 attachmentPreview(draft)
                 Divider()
@@ -41,6 +47,11 @@ struct MessageComposerView: View {
             inputRow
         }
         .background(Palette.composerBackground)
+        .onChange(of: replyingTo?.id) { _, newValue in
+            // 返信を選んだらすぐ書き始められるようにキーボードを出す.
+            guard newValue != nil else { return }
+            isInputFocused = true
+        }
         .onChange(of: pickerItem) { _, newValue in
             guard let newValue else { return }
             Task { await loadPickedItem(newValue) }
@@ -62,6 +73,39 @@ struct MessageComposerView: View {
     }
 
     // MARK: - プレビュー
+
+    /// 返信先の引用. 誰の何に返信しているのかを送信前に確認できるようにする.
+    private func replyPreview(_ original: Message) -> some View {
+        HStack(spacing: AppConstants.Layout.compactSpacing) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.accentColor)
+                .frame(width: 3, height: 32)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("\(store.displayName(for: original.senderID))さんに返信")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(original.content.previewText)
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Button {
+                replyingTo = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Palette.subdued)
+            }
+            .accessibilityLabel(String(localized: "返信をやめる"))
+        }
+        .padding(.horizontal, AppConstants.Layout.standardSpacing)
+        .padding(.vertical, AppConstants.Layout.compactSpacing)
+    }
 
     @ViewBuilder
     private func attachmentPreview(_ draft: Draft) -> some View {
@@ -185,24 +229,27 @@ struct MessageComposerView: View {
         guard canSend else { return }
         let body = text
         let attachment = draft
+        let reply = replyingTo.map { ReplyReference(replyingTo: $0) }
 
         // 先に入力欄を空にする. 送信完了を待つと連続入力の妨げになる.
         text = ""
         draft = nil
         pickerItem = nil
+        replyingTo = nil
 
         Task {
             if let attachment {
                 switch attachment {
                 case .image(let data):
-                    await store.sendImage(originalData: data, in: conversationID)
+                    await store.sendImage(originalData: data, in: conversationID, replyTo: reply)
                 case .video(let url, _):
-                    await store.sendVideo(sourceURL: url, in: conversationID)
+                    await store.sendVideo(sourceURL: url, in: conversationID, replyTo: reply)
                 }
             }
             let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                await store.sendText(trimmed, in: conversationID)
+                // 添付と本文の両方があるときは, 引用は先に出る添付だけに付ける.
+                await store.sendText(trimmed, in: conversationID, replyTo: attachment == nil ? reply : nil)
             }
         }
     }

@@ -46,6 +46,9 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
     var body: Body
     let createdAt: Date
 
+    /// 返信先(引用). Optional なので, この項目が無い古いキューの JSON も読める.
+    var replyTo: ReplyReference?
+
     /// これまでの送信試行回数. バックオフの計算に使う.
     var attemptCount: Int
 
@@ -65,6 +68,7 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
         senderID: UserID,
         body: Body,
         createdAt: Date = .now,
+        replyTo: ReplyReference? = nil,
         attemptCount: Int = 0,
         nextAttemptAt: Date? = nil,
         lastFailureReason: String? = nil,
@@ -75,6 +79,7 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
         self.senderID = senderID
         self.body = body
         self.createdAt = createdAt
+        self.replyTo = replyTo
         self.attemptCount = attemptCount
         self.nextAttemptAt = nextAttemptAt
         self.lastFailureReason = lastFailureReason
@@ -118,6 +123,7 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
             deliveryState: isPermanentlyFailed
                 ? .failed(reason: lastFailureReason ?? String(localized: "送信できませんでした"))
                 : .sending,
+            replyTo: replyTo,
             isRead: true
         )
     }
