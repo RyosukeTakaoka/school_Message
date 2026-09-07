@@ -74,8 +74,8 @@ struct ConsentGateView: View {
             )
             point(
                 icon: "arrow.uturn.backward.circle.fill",
-                title: String(localized: "送ったメッセージは消せません"),
-                detail: String(localized: "取り消し・削除の機能はまだありません。相手の端末に届いたものも消せません。")
+                title: String(localized: "取り消しても痕跡は残ります"),
+                detail: String(localized: "送信から24時間は取り消せますが、相手の画面には「送信を取り消しました」と残ります。取り消したこと自体は隠せません。")
             )
             point(
                 icon: "exclamationmark.triangle.fill",

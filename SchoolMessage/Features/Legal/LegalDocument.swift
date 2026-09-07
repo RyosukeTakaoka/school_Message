@@ -35,14 +35,14 @@ struct LegalDocument: Identifiable, Sendable {
     static let privacyPolicy = LegalDocument(
         id: "privacy",
         title: String(localized: "プライバシーポリシー"),
-        subtitle: String(localized: "制定日: 2026年9月7日"),
+        subtitle: String(localized: "制定日: 2026年9月7日 / 最終改定日: 2026年9月8日"),
         body: LegalText.privacyPolicy
     )
 
     static let termsOfService = LegalDocument(
         id: "terms",
         title: String(localized: "利用規約"),
-        subtitle: String(localized: "制定日: 2026年9月7日"),
+        subtitle: String(localized: "制定日: 2026年9月7日 / 最終改定日: 2026年9月8日"),
         body: LegalText.termsOfService
     )
 }

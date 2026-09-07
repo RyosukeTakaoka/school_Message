@@ -123,6 +123,21 @@ struct Message: Identifiable, Hashable, Sendable {
     /// 返信先(引用). 通常のメッセージでは nil.
     var replyTo: ReplyReference?
 
+    /// 送信が取り消されたか.
+    ///
+    /// 取り消してもレコード自体は残し, 中身(本文・写真・動画)だけを消す.
+    /// 吹き出しの場所に「送信を取り消しました」と表示され, 痕跡が残る.
+    /// 何も残さず消すと, 受け取った側には「見た気がするが無くなっている」
+    /// という状態だけが残り, かえって混乱と不信を招くため.
+    var isUnsent: Bool
+
+    /// サーバ上で最後に書き換えられた時刻.
+    ///
+    /// 取り消しは既存レコードの書き換えとして届くので, 差分取得
+    /// (新しい `sentAt` のものだけを取る)では気付けない. この値を
+    /// サーバ側と突き合わせて, 変化したものだけを取り直す.
+    var modifiedAt: Date?
+
     /// この端末のユーザから見て既読か.
     ///
     /// 実データは会話ごとの `lastReadAt` 1 レコードで管理し, ここには導出結果を入れる.
@@ -138,6 +153,8 @@ struct Message: Identifiable, Hashable, Sendable {
         createdAt: Date = .now,
         deliveryState: MessageDeliveryState = .sent,
         replyTo: ReplyReference? = nil,
+        isUnsent: Bool = false,
+        modifiedAt: Date? = nil,
         isRead: Bool = true
     ) {
         self.id = id
@@ -147,7 +164,22 @@ struct Message: Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
         self.deliveryState = deliveryState
         self.replyTo = replyTo
+        self.isUnsent = isUnsent
+        self.modifiedAt = modifiedAt
         self.isRead = isRead
+    }
+
+    /// この時間内なら送信を取り消せる.
+    ///
+    /// 期限を設けるのは, 何日も前のやり取りを後から書き換えられると
+    /// 会話の記録としての信頼性が失われるため. LINE 等と同じ考え方で 24 時間とする.
+    static let unsendWindow: TimeInterval = 24 * 60 * 60
+
+    /// 自分がいま取り消せるメッセージか.
+    func canUnsend(by userID: UserID?, now: Date = .now) -> Bool {
+        guard let userID, senderID == userID else { return false }
+        guard deliveryState == .sent, !isUnsent else { return false }
+        return now.timeIntervalSince(createdAt) <= Self.unsendWindow
     }
 
     func isSent(by userID: UserID) -> Bool {
@@ -172,10 +204,24 @@ struct MessagePayload: Hashable, Sendable, Codable {
     /// という 2 点のため. 古い版のアプリが読んでも, 未知のキーとして無視される.
     var replyTo: ReplyReference?
 
-    init(text: String? = nil, media: MediaMetadata? = nil, replyTo: ReplyReference? = nil) {
+    /// 送信取り消し済みか.
+    ///
+    /// 取り消すと, このフラグだけを立てた payload で元のレコードを上書きし,
+    /// 本文・メディアのメタデータは持たせない. 平文のフィールドを増やさないので
+    /// CloudKit のスキーマ変更は不要で, かつ「取り消した」事実自体も
+    /// 会話の参加者以外には読めない.
+    var isUnsent: Bool?
+
+    init(
+        text: String? = nil,
+        media: MediaMetadata? = nil,
+        replyTo: ReplyReference? = nil,
+        isUnsent: Bool? = nil
+    ) {
         self.text = text
         self.media = media
         self.replyTo = replyTo
+        self.isUnsent = isUnsent
     }
 
     init(content: MessageContent, replyTo: ReplyReference? = nil) {

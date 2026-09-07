@@ -12,8 +12,10 @@ extension ChatStore {
             await refreshMessages(in: conversationID)
         } else {
             // すでに表示できる内容があるので, 先に描画してから裏で更新する.
+            // 取り消されたメッセージも, 開いた時点で確認する.
             Task { [weak self] in
                 await self?.refreshMessages(in: conversationID)
+                await self?.reconcileMessages(in: conversationID)
             }
         }
         await markSelectedConversationRead()
@@ -278,10 +280,101 @@ extension ChatStore {
         flushOutbox()
     }
 
-    /// ユーザが送信を取り消した.
+    /// まだ送信できていないメッセージを, キューから取り下げる.
+    ///
+    /// サーバにはまだ何も無いので, 痕跡を残さず消してよい.
     func cancelSending(_ messageID: MessageID, in conversationID: ConversationID) async {
         await outboxQueue.cancel(messageID)
         messagesByConversation[conversationID]?.removeAll { $0.id == messageID }
+    }
+
+    // MARK: - 送信取り消し
+
+    /// 送信済みのメッセージを取り消す.
+    ///
+    /// 相手の画面にも「送信を取り消しました」が残る. 完全に消えるのではなく
+    /// 痕跡が残ることは, 取り消す前に画面上で断りを入れている.
+    func unsendMessage(_ messageID: MessageID, in conversationID: ConversationID) async {
+        do {
+            let updated = try await backend.unsendMessage(messageID, in: conversationID)
+            applyUnsent(updated, in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 取り消し済みの状態を画面と端末内の保存物へ反映する.
+    private func applyUnsent(_ message: Message, in conversationID: ConversationID) {
+        // 端末に残っているダウンロード済みの写真・動画も消す.
+        // サーバから消しても手元に残っていては取り消しの意味がない.
+        if let attachment = messagesByConversation[conversationID]?
+            .first(where: { $0.id == message.id })?
+            .content.attachment {
+            purgeCachedMedia(for: attachment)
+        }
+        merge([message], into: conversationID)
+        refreshPreviewIfNeeded(for: conversationID)
+    }
+
+    private func purgeCachedMedia(for attachment: MediaAttachment) {
+        if let localURL = attachment.localURL {
+            files.remove(at: localURL)
+        }
+        if let remote = attachment.remote {
+            files.remove(at: files.cachedURL(for: remote, kind: attachment.kind))
+        }
+    }
+
+    /// 一覧に出ている「最後のメッセージ」が取り消されたときに文言を追従させる.
+    private func refreshPreviewIfNeeded(for conversationID: ConversationID) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversationID }),
+              let newest = messagesByConversation[conversationID]?.last
+        else { return }
+        conversations[index].lastMessage = MessageSummary(
+            senderID: newest.senderID,
+            preview: newest.isUnsent
+                ? String(localized: "送信を取り消しました")
+                : newest.content.previewText,
+            createdAt: newest.createdAt
+        )
+    }
+
+    /// 取得済みのメッセージがその後書き換えられていないかを確かめる.
+    ///
+    /// 送信取り消しは既存レコードの書き換えとして届くため, 「`sentAt` が
+    /// 新しいものを取る」差分取得では永久に気付けない. ID と更新時刻だけを
+    /// 軽く引き, 変わったものだけを取り直す.
+    func reconcileMessages(in conversationID: ConversationID) async {
+        guard phase == .ready else { return }
+        let loaded = (messagesByConversation[conversationID] ?? [])
+            .filter { $0.deliveryState == .sent && !$0.isUnsent }
+        guard let oldest = loaded.first?.createdAt else { return }
+
+        guard let revisions = try? await backend.fetchMessageRevisions(
+            in: conversationID,
+            since: oldest
+        ) else { return }
+
+        // 手元の記録より新しく書き換えられているものを探す.
+        let changed = loaded.filter { message in
+            guard let serverModifiedAt = revisions[message.id] else { return false }
+            guard let localModifiedAt = message.modifiedAt else { return true }
+            return serverModifiedAt > localModifiedAt
+        }
+        guard !changed.isEmpty else { return }
+
+        guard let refreshed = try? await backend.fetchMessages(
+            ids: changed.map(\.id),
+            in: conversationID
+        ) else { return }
+
+        for message in refreshed where message.isUnsent {
+            applyUnsent(message, in: conversationID)
+        }
+        let stillLive = refreshed.filter { !$0.isUnsent }
+        if !stillLive.isEmpty {
+            merge(stillLive, into: conversationID)
+        }
     }
 
     // MARK: - 既読

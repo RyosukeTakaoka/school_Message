@@ -150,7 +150,9 @@ actor InMemoryChatBackend: ChatBackend {
             if let last = history.last {
                 copy.lastMessage = MessageSummary(
                     senderID: last.senderID,
-                    preview: last.content.previewText,
+                    preview: last.isUnsent
+                        ? String(localized: "送信を取り消しました")
+                        : last.content.previewText,
                     createdAt: last.createdAt
                 )
             }
@@ -222,6 +224,42 @@ actor InMemoryChatBackend: ChatBackend {
         messages[outgoing.conversationID, default: []].append(message)
         eventHub.emit(.messagesChanged(outgoing.conversationID))
         return message
+    }
+
+    func unsendMessage(_ messageID: MessageID, in conversationID: ConversationID) async throws -> Message {
+        guard var history = messages[conversationID],
+              let index = history.firstIndex(where: { $0.id == messageID })
+        else {
+            throw AppError.underlying("メッセージが見つかりませんでした")
+        }
+        guard history[index].senderID == me.id else {
+            throw AppError.underlying("自分が送ったメッセージだけ取り消せます")
+        }
+
+        var updated = history[index]
+        updated.content = .text("")
+        updated.replyTo = nil
+        updated.isUnsent = true
+        updated.modifiedAt = .now
+        history[index] = updated
+        messages[conversationID] = history
+
+        eventHub.emit(.messagesChanged(conversationID))
+        return updated
+    }
+
+    func fetchMessageRevisions(in conversationID: ConversationID, since: Date) async throws -> [MessageID: Date] {
+        let history = messages[conversationID] ?? []
+        return history
+            .filter { $0.createdAt >= since }
+            .reduce(into: [:]) { result, message in
+                result[message.id] = message.modifiedAt ?? message.createdAt
+            }
+    }
+
+    func fetchMessages(ids: [MessageID], in conversationID: ConversationID) async throws -> [Message] {
+        let wanted = Set(ids)
+        return (messages[conversationID] ?? []).filter { wanted.contains($0.id) }
     }
 
     func markRead(conversationID: ConversationID, upTo date: Date) async throws {

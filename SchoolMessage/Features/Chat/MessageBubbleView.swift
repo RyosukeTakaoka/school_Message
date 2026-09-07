@@ -19,6 +19,8 @@ struct MessageBubbleView: View {
     var onReply: () -> Void = {}
     /// 引用をタップした. 元メッセージまでスクロールする.
     var onTapQuote: (MessageID) -> Void = { _ in }
+    /// 「送信を取り消す」を選んだ. 確認は呼び出し側で取る.
+    var onUnsend: () -> Void = {}
 
     private var store: ChatStore { environment.store }
     private var isOutgoing: Bool { message.senderID == store.currentUserID }
@@ -110,22 +112,58 @@ struct MessageBubbleView: View {
     /// 元が送信中でも表示は崩れず, 送信キューは投入順に送るため順序も保たれる.
     @ViewBuilder
     private var replyMenu: some View {
-        Button {
-            onReply()
-        } label: {
-            Label(String(localized: "返信"), systemImage: "arrowshape.turn.up.left")
-        }
-        if case .text(let body) = message.content {
+        // 取り消し済みには何も操作させない.
+        if !message.isUnsent {
             Button {
-                UIPasteboard.general.string = body
+                onReply()
             } label: {
-                Label(String(localized: "コピー"), systemImage: "doc.on.doc")
+                Label(String(localized: "返信"), systemImage: "arrowshape.turn.up.left")
+            }
+            if case .text(let body) = message.content {
+                Button {
+                    UIPasteboard.general.string = body
+                } label: {
+                    Label(String(localized: "コピー"), systemImage: "doc.on.doc")
+                }
+            }
+            if message.canUnsend(by: store.currentUserID) {
+                Button(role: .destructive) {
+                    onUnsend()
+                } label: {
+                    Label(String(localized: "送信を取り消す"), systemImage: "arrow.uturn.backward")
+                }
             }
         }
     }
 
     @ViewBuilder
     private var bubble: some View {
+        if message.isUnsent {
+            unsentBubble
+        } else {
+            contentBubble
+        }
+    }
+
+    /// 取り消し済みの吹き出し.
+    ///
+    /// 枠線だけの控えめな見た目にして, 中身のあるメッセージと明確に区別する.
+    /// 位置と時刻はそのまま残るので, 会話の流れが分からなくならない.
+    private var unsentBubble: some View {
+        Text("送信を取り消しました")
+            .font(.footnote)
+            .italic()
+            .foregroundStyle(Palette.subdued)
+            .padding(.horizontal, AppConstants.Layout.bubbleHorizontalPadding)
+            .padding(.vertical, AppConstants.Layout.bubbleVerticalPadding)
+            .overlay {
+                RoundedRectangle(cornerRadius: AppConstants.Layout.bubbleCornerRadius, style: .continuous)
+                    .strokeBorder(Palette.subdued.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
+    }
+
+    @ViewBuilder
+    private var contentBubble: some View {
         switch message.content {
         case .text(let body):
             Text(body)
@@ -270,6 +308,8 @@ struct MessageBubbleView: View {
     /// 相手がまだ読んでいない間は何も出さない. 「未読」と明示すると
     /// 未読であること自体を責めるような圧力になりやすいため, 付いたときだけ出す.
     private var readLabel: String? {
+        // 取り消し済みに既読を出しても意味がない.
+        guard !message.isUnsent else { return nil }
         guard isOutgoing, let me = store.currentUserID else { return nil }
         let count = conversation.readCount(upTo: message.createdAt, excluding: me)
         guard count > 0 else { return nil }
@@ -285,7 +325,9 @@ struct MessageBubbleView: View {
         if let reply = message.replyTo {
             parts.append(String(localized: "\(store.displayName(for: reply.senderID))さんへの返信"))
         }
-        parts.append(message.content.previewText)
+        parts.append(message.isUnsent
+                     ? String(localized: "送信を取り消しました")
+                     : message.content.previewText)
         parts.append(DateDisplay.accessibilityTimestamp(message.createdAt))
         switch message.deliveryState {
         case .sending: parts.append(String(localized: "送信中"))

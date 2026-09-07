@@ -619,6 +619,21 @@ extension CloudKitBackend {
         payload: MessagePayload,
         thumbnailData: Data?
     ) -> Message {
+        // 取り消し済みは中身を持たない. 位置と時刻だけを残して印を付ける.
+        if payload.isUnsent == true {
+            return Message(
+                id: raw.id,
+                conversationID: raw.conversationID,
+                senderID: raw.senderID,
+                content: .text(""),
+                createdAt: raw.sentAt,
+                deliveryState: .sent,
+                isUnsent: true,
+                modifiedAt: raw.modifiedAt,
+                isRead: true
+            )
+        }
+
         let content: MessageContent
         if let media = payload.media {
             let attachment = MediaAttachment(
@@ -648,11 +663,15 @@ extension CloudKitBackend {
             createdAt: raw.sentAt,
             deliveryState: .sent,
             replyTo: payload.replyTo,
+            modifiedAt: raw.modifiedAt,
             isRead: true   // 既読判定は会話の lastReadAt との比較で上位層が付け直す
         )
     }
 
     private static func previewText(for payload: MessagePayload) -> String {
+        if payload.isUnsent == true {
+            return String(localized: "送信を取り消しました")
+        }
         if let media = payload.media {
             return media.kind == .image ? String(localized: "写真") : String(localized: "動画")
         }
@@ -765,6 +784,123 @@ extension CloudKitBackend {
         let raw = try CloudKitMapper.rawConversation(from: record, currentUserID: me)
         cacheConversationMetadata(participants: raw.participantIDs, owner: raw.ownerID, for: raw.id)
         return raw.participantIDs
+    }
+
+    // MARK: - 送信取り消し
+
+    /// 送信を取り消す.
+    ///
+    /// ## レコードを消さずに上書きする理由
+    /// レコードごと消すと, 既に受け取っている相手の画面からは黙って消えることに
+    /// なり, 「あったはずのものが無い」状態だけが残る. レコードを残して
+    /// 「取り消し済み」の印を書き込めば, どちらの画面にも同じ位置に
+    /// 「送信を取り消しました」と出せる.
+    ///
+    /// 中身(暗号文・写真や動画の実体・サムネイル)はすべて取り除くので,
+    /// サーバに残るのは「その時刻に取り消されたメッセージがある」という事実だけになる.
+    ///
+    /// Public Database ではレコードを更新できるのは作成者だけなので,
+    /// 他人のメッセージを取り消すことは CloudKit 側で拒否される.
+    /// ここでも念のため送信者を確認する.
+    func unsendMessage(_ messageID: MessageID, in conversationID: ConversationID) async throws -> Message {
+        let me = try await currentUserID()
+
+        // 添付そのものは取りにいかない. 消すためだけに動画を丸ごと
+        // ダウンロードするのは無駄なので, 判定に要るフィールドだけを取る.
+        // (取得しなかった添付フィールドは, 後で明示的に nil を入れて消す)
+        let recordID = CKRecord.ID(recordName: messageID.rawValue)
+        let results: [CKRecord.ID: Result<CKRecord, any Error>]
+        do {
+            results = try await database.records(for: [recordID], desiredKeys: Self.unsendDesiredKeys)
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+        guard let result = results[recordID], let record = try? result.get() else {
+            throw AppError.underlying(String(localized: "メッセージが見つかりませんでした"))
+        }
+        let raw = try CloudKitMapper.rawMessage(from: record, currentUserID: me)
+
+        guard raw.senderID == me else {
+            throw AppError.underlying(String(localized: "自分が送ったメッセージだけ取り消せます"))
+        }
+        guard raw.conversationID == conversationID else {
+            throw AppError.underlying(String(localized: "メッセージが見つかりませんでした"))
+        }
+        guard Date.now.timeIntervalSince(raw.sentAt) <= Message.unsendWindow else {
+            throw AppError.underlying(String(localized: "送信から 24 時間を過ぎたメッセージは取り消せません"))
+        }
+
+        let key = try await conversationKey(for: conversationID)
+        // 取り消し済みの印だけを入れた payload で上書きする.
+        record[CKSchema.Message.payload] = try await crypto.seal(
+            JSONEncoder().encode(MessagePayload(isUnsent: true)),
+            with: key
+        ) as CKRecordValue
+        // 写真・動画とサムネイルの実体をサーバから取り除く.
+        // 型を明示しているのは, CKRecord の添字が複数あり素の nil では
+        // どの添字か決まらないため.
+        let cleared: CKRecordValue? = nil
+        record[CKSchema.Message.mediaAsset] = cleared
+        record[CKSchema.Message.thumbnailCipher] = cleared
+
+        let saved: CKRecord
+        do {
+            saved = try await saveWithRetry(record)
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+
+        return Message(
+            id: messageID,
+            conversationID: conversationID,
+            senderID: me,
+            content: .text(""),
+            createdAt: raw.sentAt,
+            deliveryState: .sent,
+            isUnsent: true,
+            modifiedAt: saved.modificationDate ?? .now,
+            isRead: true
+        )
+    }
+
+    func fetchMessageRevisions(in conversationID: ConversationID, since: Date) async throws -> [MessageID: Date] {
+        let query = CKQuery(
+            recordType: CKSchema.Message.recordType,
+            predicate: NSPredicate(
+                format: "%K == %@ AND %K >= %@",
+                CKSchema.Message.conversation, reference(to: conversationID),
+                CKSchema.Message.sentAt, since as NSDate
+            )
+        )
+        query.sortDescriptors = [NSSortDescriptor(key: CKSchema.Message.sentAt, ascending: false)]
+
+        // desiredKeys を空にすると, 独自フィールドは取らずにシステム項目
+        // (レコード ID と更新時刻)だけが返る. 本文もサムネイルも運ばないので軽い.
+        let records = try await queryWithRetry(query, desiredKeys: [], limit: Self.revisionCheckLimit)
+
+        var revisions: [MessageID: Date] = [:]
+        for record in records {
+            let id = MessageID(record.recordID.recordName)
+            revisions[id] = record.modificationDate ?? record.creationDate ?? .distantPast
+        }
+        return revisions
+    }
+
+    func fetchMessages(ids: [MessageID], in conversationID: ConversationID) async throws -> [Message] {
+        guard !ids.isEmpty else { return [] }
+        let me = try await currentUserID()
+        let key = try await conversationKey(for: conversationID)
+
+        let recordIDs = ids.map { CKRecord.ID(recordName: $0.rawValue) }
+        let results: [CKRecord.ID: Result<CKRecord, any Error>]
+        do {
+            results = try await database.records(for: recordIDs, desiredKeys: Self.messageDesiredKeys)
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+
+        let records = results.values.compactMap { try? $0.get() }
+        return try await decodeMessages(records, key: key, me: me)
     }
 
     // MARK: - 既読
@@ -902,6 +1038,24 @@ extension CloudKitBackend {
 
     /// 一覧用にまとめて取るメッセージの上限.
     private static let activityFetchLimit = 500
+
+    /// 書き換え(送信取り消し)の確認でさかのぼるメッセージ数の上限.
+    private static let revisionCheckLimit = 300
+
+    /// 送信取り消しのときに読み出すフィールド.
+    ///
+    /// `mediaAsset` と `thumbnailCipher` は入れない — 消すためだけに
+    /// 本体をダウンロードしないため. 代わりに保存時へ明示的に nil を入れる.
+    /// 逆に, それ以外のフィールドはすべて読んでおく(読まずに保存すると
+    /// 消えてしまう可能性があるため).
+    private static let unsendDesiredKeys: [CKRecord.FieldKey] = [
+        CKSchema.Message.conversation,
+        CKSchema.Message.senderID,
+        CKSchema.Message.sentAt,
+        CKSchema.Message.payload,
+        CKSchema.Message.participantIDs,
+        CKSchema.Message.senderDisplayName
+    ]
 
     /// メッセージ取得時に要求するフィールド.
     /// `mediaAsset` は含めない — 本体は表示のためにタップされたときに初めて取る.

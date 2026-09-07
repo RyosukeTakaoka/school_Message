@@ -13,6 +13,8 @@ struct ChatDetailView: View {
     @State private var replyingTo: Message?
     /// 引用をタップして移動したときに, 一瞬強調する対象.
     @State private var highlightedMessageID: MessageID?
+    /// 送信取り消しの確認中のメッセージ.
+    @State private var unsendCandidate: Message?
 
     private var store: ChatStore { environment.store }
 
@@ -47,7 +49,8 @@ struct ChatDetailView: View {
                                 onReply: { replyingTo = message },
                                 onTapQuote: { original in
                                     scrollToOriginal(original, using: proxy)
-                                }
+                                },
+                                onUnsend: { unsendCandidate = message }
                             )
                             .id(message.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -109,6 +112,26 @@ struct ChatDetailView: View {
         }
         .fullScreenCover(item: $viewingMedia) { attachment in
             MediaViewerScreen(attachment: attachment, conversationID: conversation.id)
+        }
+        // 取り消しは元に戻せず, 相手の画面にも痕跡が残る. 先に伝えてから実行する.
+        .confirmationDialog(
+            String(localized: "このメッセージの送信を取り消しますか?"),
+            isPresented: .init(
+                get: { unsendCandidate != nil },
+                set: { if !$0 { unsendCandidate = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: unsendCandidate
+        ) { message in
+            Button(String(localized: "送信を取り消す"), role: .destructive) {
+                unsendCandidate = nil
+                Task { await store.unsendMessage(message.id, in: conversation.id) }
+            }
+            Button(String(localized: "キャンセル"), role: .cancel) {
+                unsendCandidate = nil
+            }
+        } message: { _ in
+            Text("内容は消えますが、相手の画面には「送信を取り消しました」と残ります。取り消したことは隠せません。")
         }
         .task(id: conversation.id) {
             await store.markRead(conversation.id)

@@ -257,6 +257,7 @@ final class ChatStore {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
             var lastListRefresh = Date.now
+            var lastRevisionCheck = Date.now
             while !Task.isCancelled {
                 guard let self else { return }
                 let interval = self.selectedConversationID == nil
@@ -271,6 +272,13 @@ final class ChatStore {
                 // CloudKit への負荷と電池の消費が見合わないため.
                 if let selected = self.selectedConversationID {
                     await self.refreshMessages(in: selected)
+
+                    // 送信取り消しは既存メッセージの書き換えとして届くので,
+                    // 新着の取得とは別に確認する.
+                    if Date.now.timeIntervalSince(lastRevisionCheck) >= AppConstants.Timing.revisionCheckInterval {
+                        lastRevisionCheck = .now
+                        await self.reconcileMessages(in: selected)
+                    }
                 }
                 if Date.now.timeIntervalSince(lastListRefresh) >= AppConstants.Timing.fallbackPollInterval {
                     lastListRefresh = .now
@@ -287,6 +295,7 @@ final class ChatStore {
             await self.refreshConversations()
             if let selected = self.selectedConversationID {
                 await self.refreshMessages(in: selected)
+                await self.reconcileMessages(in: selected)
                 await self.markSelectedConversationRead()
             }
             self.flushOutbox()

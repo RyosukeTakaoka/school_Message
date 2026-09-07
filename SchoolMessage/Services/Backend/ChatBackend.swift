@@ -89,6 +89,22 @@ protocol ChatBackend: Sendable {
     /// サーバ側で同じレコードに上書きされ, 重複しない.
     func send(_ outgoing: OutgoingMessage) async throws -> Message
 
+    /// 送信を取り消す.
+    ///
+    /// レコードは残したまま本文・写真・動画をサーバから消し, 「取り消し済み」の
+    /// 印だけを残す. 自分が送ったメッセージにしか行えない.
+    func unsendMessage(_ messageID: MessageID, in conversationID: ConversationID) async throws -> Message
+
+    /// 取得済みメッセージがその後書き換えられていないかを確かめるための一覧.
+    ///
+    /// 送信取り消しは既存レコードの書き換えとして届くため, `sentAt` を見る
+    /// 差分取得では気付けない. ID と更新時刻だけを軽く引いて突き合わせる.
+    /// - Returns: メッセージ ID → サーバ上の最終更新時刻.
+    func fetchMessageRevisions(in conversationID: ConversationID, since: Date) async throws -> [MessageID: Date]
+
+    /// 指定した ID のメッセージを取り直す(書き換えを検出したときに使う).
+    func fetchMessages(ids: [MessageID], in conversationID: ConversationID) async throws -> [Message]
+
     /// 既読位置を保存する.
     func markRead(conversationID: ConversationID, upTo date: Date) async throws
 

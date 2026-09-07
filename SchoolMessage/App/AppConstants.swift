@@ -52,6 +52,9 @@ enum AppConstants {
         /// プッシュ通知(CloudKit 購読)の到達を待たずに, 相手の新着メッセージを
         /// 短い間隔で拾いにいく. 会話中は体感速度を優先する.
         static let activeConversationPollInterval: TimeInterval = 3
+        /// 送信取り消しなど, 既存メッセージの書き換えを確認する間隔.
+        /// 新着ほど頻度は要らないので, 新着の取得より長めにする.
+        static let revisionCheckInterval: TimeInterval = 12
         /// 送信リトライの初期待機時間. 以降は指数バックオフ.
         static let retryBaseDelay: TimeInterval = 1.5
         static let maxRetryAttempts = 4

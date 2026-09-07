@@ -20,7 +20,7 @@ final class ConsentStore {
     ///
     /// 規約・ポリシーの内容を実質的に変更したら, この値を必ず更新すること.
     /// 更新すると, 既に同意済みの利用者にも同意画面がもう一度表示される.
-    static let currentVersion = "2026-09-07"
+    static let currentVersion = "2026-09-08"
 
     private let defaults: UserDefaults
     private let storageKey = "legal.agreedVersion"

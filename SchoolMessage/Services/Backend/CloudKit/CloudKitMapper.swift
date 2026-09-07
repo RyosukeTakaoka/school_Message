@@ -156,6 +156,12 @@ enum CloudKitMapper {
         var thumbnailCipher: Data?
         var mediaAssetByteCount: Int
         var hasMediaAsset: Bool
+        /// サーバ上で最後に書き換えられた時刻.
+        ///
+        /// 通常メッセージは作成後に変更されないが, 送信取り消しだけは
+        /// 既存レコードの書き換えとして届く. 「取得済みのメッセージが
+        /// あとから変わったか」を安く判定するために持つ.
+        var modifiedAt: Date
     }
 
     static func rawMessage(from record: CKRecord, currentUserID: UserID) throws -> RawMessage {
@@ -197,7 +203,8 @@ enum CloudKitMapper {
             payloadCipher: payload,
             thumbnailCipher: record[CKSchema.Message.thumbnailCipher] as? Data,
             mediaAssetByteCount: assetByteCount,
-            hasMediaAsset: asset != nil
+            hasMediaAsset: asset != nil,
+            modifiedAt: record.modificationDate ?? record.creationDate ?? .distantPast
         )
     }
 
