@@ -127,6 +127,12 @@ protocol ChatBackend: Sendable {
     /// プッシュ購読を用意する(冪等).
     func configureSubscriptions() async throws
 
+    /// サーバ上に実際に存在する購読の ID.
+    ///
+    /// 「購読の作成に成功した」ことと「サーバに購読が残っている」ことは別なので,
+    /// 通知が来ないときの切り分けのために実際の状態を問い合わせられるようにする.
+    func fetchSubscriptionIDs() async throws -> [String]
+
     /// リモート通知の payload を受けて, 対応するイベントを流す.
     func handleRemoteNotification(userInfo: [AnyHashable: Any]) async
 }

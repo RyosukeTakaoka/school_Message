@@ -22,7 +22,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
-        Log.push.info("registered for remote notifications")
+        // 結果をサービスに残し, プロフィール画面の診断から確認できるようにする.
+        Task { @MainActor in
+            AppDelegate.environment?.pushService.handleDeviceToken(deviceToken)
+        }
     }
 
     func application(
@@ -30,7 +33,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFailToRegisterForRemoteNotificationsWithError error: any Error
     ) {
         // 通知が使えなくてもアプリは動く(ポーリングで新着に気付く).
-        Log.push.notice("remote notification registration failed")
+        Task { @MainActor in
+            AppDelegate.environment?.pushService.handleDeviceTokenFailure(error)
+        }
     }
 
     func application(

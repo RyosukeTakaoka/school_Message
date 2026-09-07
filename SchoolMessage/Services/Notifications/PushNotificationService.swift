@@ -21,6 +21,23 @@ final class PushNotificationService: NSObject {
     private let preferences: NotificationPreferences
     private weak var store: ChatStore?
 
+    /// APNs への端末登録の結果.
+    ///
+    /// 「通知が来ない」の原因は, 許可・端末登録・購読・配信のどこで切れても
+    /// 同じ症状になる. 段階ごとに結果を残し, 画面で切り分けられるようにする.
+    enum DeviceTokenState: Equatable {
+        case notRequested
+        case registered(suffix: String)
+        case failed(String)
+
+        var isRegistered: Bool {
+            if case .registered = self { return true }
+            return false
+        }
+    }
+
+    private(set) var deviceTokenState: DeviceTokenState = .notRequested
+
     init(preferences: NotificationPreferences) {
         self.preferences = preferences
         super.init()
@@ -28,6 +45,71 @@ final class PushNotificationService: NSObject {
 
     func attach(store: ChatStore) {
         self.store = store
+    }
+
+    // MARK: - 端末登録の結果(AppDelegate から通知される)
+
+    func handleDeviceToken(_ token: Data) {
+        // トークン全体は秘密情報なので末尾だけ残す. 同一端末かの判別には足りる.
+        let hex = token.map { String(format: "%02x", $0) }.joined()
+        deviceTokenState = .registered(suffix: String(hex.suffix(6)))
+        Log.push.info("registered for remote notifications")
+    }
+
+    func handleDeviceTokenFailure(_ error: any Error) {
+        deviceTokenState = .failed(error.localizedDescription)
+        Log.push.notice("remote notification registration failed")
+    }
+
+    /// 通知の許可状態を OS に問い合わせる.
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
+    // MARK: - 診断
+
+    /// 通知が届くまでの各段階の状態.
+    ///
+    /// 通知は「許可 → 端末登録 → 購読 → 配信」の 4 段階を全部通らないと届かず,
+    /// どこで切れても症状は同じ「通知が来ない」になる. 段階ごとに結果を出して
+    /// 原因を 1 回で特定できるようにする.
+    struct Diagnostics: Equatable {
+        var authorization: UNAuthorizationStatus
+        var deviceToken: DeviceTokenState
+        var serverSubscriptionIDs: [String]
+        var subscriptionLookupError: String?
+
+        /// 新着メッセージの購読がサーバ上に存在するか.
+        var hasMessageSubscription: Bool {
+            serverSubscriptionIDs.contains(CKSchema.SubscriptionID.newMessages)
+        }
+
+        /// すべての段階を通過しているか.
+        var isHealthy: Bool {
+            authorization == .authorized
+                && deviceToken.isRegistered
+                && hasMessageSubscription
+        }
+    }
+
+    /// いまの状態を集めて返す.
+    func runDiagnostics(using backend: any ChatBackend) async -> Diagnostics {
+        let status = await authorizationStatus()
+
+        var subscriptionIDs: [String] = []
+        var lookupError: String?
+        do {
+            subscriptionIDs = try await backend.fetchSubscriptionIDs()
+        } catch {
+            lookupError = AppError.wrap(error).errorDescription
+        }
+
+        return Diagnostics(
+            authorization: status,
+            deviceToken: deviceTokenState,
+            serverSubscriptionIDs: subscriptionIDs,
+            subscriptionLookupError: lookupError
+        )
     }
 
     // MARK: - 登録

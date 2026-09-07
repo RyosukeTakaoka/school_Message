@@ -611,6 +611,14 @@ actor CloudKitBackend: ChatBackend {
         }
     }
 
+    func fetchSubscriptionIDs() async throws -> [String] {
+        do {
+            return try await database.allSubscriptions().map(\.subscriptionID)
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+    }
+
     /// プッシュに載せる情報.
     ///
     /// 本文は暗号化されておりサーバでは復号できないため, サーバ生成の通知には

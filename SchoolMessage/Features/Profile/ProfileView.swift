@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UserNotifications
 
 /// 自分のプロフィールと設定.
 struct ProfileView: View {
@@ -14,6 +15,8 @@ struct ProfileView: View {
     @State private var isConfirmingSignOut = false
     @State private var didCopyHandle = false
     @State private var readingDocument: LegalDocument?
+    @State private var diagnostics: PushNotificationService.Diagnostics?
+    @State private var isDiagnosing = false
 
     private var store: ChatStore { environment.store }
 
@@ -106,6 +109,9 @@ struct ProfileView: View {
             .onAppear {
                 displayName = store.myProfile?.displayName ?? ""
             }
+            // 開いた時点で自動的に調べる. 「通知が来ない」ときに
+            // ここを開けば原因が出ている状態にする.
+            .task { await runDiagnostics() }
             .onChange(of: imagePickerItem) { _, newValue in
                 guard let newValue else { return }
                 Task { imageData = try? await newValue.loadTransferable(type: Data.self) }
@@ -143,52 +149,112 @@ struct ProfileView: View {
         }
     }
 
-    /// 新着を知らせる仕組み(プッシュ購読)が使えているか.
+    /// 通知が届くまでの各段階を並べて出す.
     ///
-    /// ここが失敗していると, アプリを開いていない間の通知が一切届かない.
-    /// 以前は失敗してもログに出るだけで気付けなかったため, 画面に出す.
+    /// 通知は「許可 → 端末登録 → 購読 → 配信」の 4 段階を全部通らないと届かず,
+    /// どこで切れても症状は同じ「通知が来ない」になる. 段階ごとに結果を出して,
+    /// どこで止まっているのかを 1 画面で特定できるようにする.
     @ViewBuilder
     private var subscriptionStatusRow: some View {
-        switch store.pushSubscriptionStatus {
-        case .unknown, .configuring:
+        Button {
+            Task { await runDiagnostics() }
+        } label: {
             HStack {
-                Text("新着の受信設定")
+                Label(String(localized: "通知の状態を調べる"), systemImage: "stethoscope")
                 Spacer()
-                ProgressView()
+                if isDiagnosing { ProgressView() }
             }
+        }
+        .disabled(isDiagnosing)
 
-        case .active:
-            HStack {
-                Text("新着の受信設定")
-                Spacer()
-                Label(String(localized: "有効"), systemImage: "checkmark.circle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(.footnote)
-                    .foregroundStyle(Palette.success)
-            }
+        if let diagnostics {
+            diagnosticRow(
+                String(localized: "1. 通知の許可"),
+                ok: diagnostics.authorization == .authorized,
+                detail: authorizationDetail(diagnostics.authorization)
+            )
+            diagnosticRow(
+                String(localized: "2. 端末の登録"),
+                ok: diagnostics.deviceToken.isRegistered,
+                detail: deviceTokenDetail(diagnostics.deviceToken)
+            )
+            diagnosticRow(
+                String(localized: "3. サーバの購読"),
+                ok: diagnostics.hasMessageSubscription,
+                detail: subscriptionDetail(diagnostics)
+            )
 
-        case .failed(let error):
-            VStack(alignment: .leading, spacing: AppConstants.Layout.compactSpacing) {
-                HStack {
-                    Text("新着の受信設定")
-                    Spacer()
-                    Label(String(localized: "未設定"), systemImage: "exclamationmark.triangle.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.footnote)
-                        .foregroundStyle(Palette.failure)
-                }
-                Text(error.errorDescription ?? String(localized: "設定できませんでした"))
-                    .font(.caption)
-                    .foregroundStyle(Palette.subdued)
-                Text("この状態でも、アプリを開いている間はメッセージが自動で表示されます。届かないのはアプリを閉じている間の通知だけです。")
-                    .font(.caption)
-                    .foregroundStyle(Palette.subdued)
-                Button(String(localized: "もう一度設定する")) {
-                    Task { await store.configurePushSubscriptions() }
+            if !diagnostics.isHealthy {
+                Button(String(localized: "購読をもう一度設定する")) {
+                    Task {
+                        await store.configurePushSubscriptions()
+                        await runDiagnostics()
+                    }
                 }
                 .font(.footnote)
             }
+
+            Text(diagnostics.isHealthy
+                 ? String(localized: "すべて有効です。それでも通知が来ない場合は、送信側が別の端末・別の Apple ID か、iPad が「おやすみモード」等になっていないか確認してください。")
+                 : String(localized: "×の付いた段階が原因です。アプリを開いている間のメッセージ表示は、この設定に関係なく動きます。"))
+                .font(.caption)
+                .foregroundStyle(Palette.subdued)
         }
+    }
+
+    private func diagnosticRow(_ title: String, ok: Bool, detail: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(ok ? Palette.success : Palette.failure)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func authorizationDetail(_ status: UNAuthorizationStatus) -> String {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            String(localized: "許可されています")
+        case .denied:
+            String(localized: "拒否されています。iPad の「設定」→「通知」→ SchoolMessage で許可してください")
+        case .notDetermined:
+            String(localized: "まだ確認していません。チャットを一度開くと許可を求めます")
+        @unknown default:
+            String(localized: "不明")
+        }
+    }
+
+    private func deviceTokenDetail(_ state: PushNotificationService.DeviceTokenState) -> String {
+        switch state {
+        case .registered(let suffix):
+            String(localized: "APNs に登録済み(…\(suffix))")
+        case .notRequested:
+            String(localized: "まだ登録できていません。通信できる状態でアプリを開き直してください")
+        case .failed(let reason):
+            String(localized: "登録に失敗: \(reason)")
+        }
+    }
+
+    private func subscriptionDetail(_ diagnostics: PushNotificationService.Diagnostics) -> String {
+        if let error = diagnostics.subscriptionLookupError {
+            return String(localized: "確認できませんでした: \(error)")
+        }
+        if diagnostics.hasMessageSubscription {
+            return String(localized: "新着メッセージの購読があります(全 \(diagnostics.serverSubscriptionIDs.count) 件)")
+        }
+        return String(localized: "新着メッセージの購読がサーバにありません。下のボタンで作り直してください")
+    }
+
+    private func runDiagnostics() async {
+        isDiagnosing = true
+        defer { isDiagnosing = false }
+        diagnostics = await environment.pushService.runDiagnostics(using: environment.backend)
     }
 
     /// 同意した規約をあとから読み返せるようにする.
