@@ -9,18 +9,26 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            switch environment.store.phase {
-            case .launching:
-                LaunchPlaceholderView()
-            case .blocked(let error):
-                BlockedView(error: error)
-            case .needsRegistration:
-                RegistrationView()
-            case .ready:
-                MainSplitView()
+            // 同意はどの画面よりも先に取る. iCloud の状態に関わらず,
+            // 規約に同意していない状態でアプリの中身を見せない.
+            if !environment.consent.hasAgreedToCurrentVersion {
+                ConsentGateView()
+                    .environment(environment.consent)
+            } else {
+                switch environment.store.phase {
+                case .launching:
+                    LaunchPlaceholderView()
+                case .blocked(let error):
+                    BlockedView(error: error)
+                case .needsRegistration:
+                    RegistrationView()
+                case .ready:
+                    MainSplitView()
+                }
             }
         }
         .animation(.default, value: environment.store.phase)
+        .animation(.default, value: environment.consent.hasAgreedToCurrentVersion)
     }
 }
 

@@ -65,7 +65,7 @@ docs/           設計・スキーマ・手順書
 | [`docs/SECURITY.md`](docs/SECURITY.md) | 暗号化の設計、なりすまし対策、既知の限界 |
 | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | 通知の仕組みと、本文を確実に出すための次の一手 |
 | [`docs/SETUP.md`](docs/SETUP.md) | Xcode / CloudKit の設定手順 |
-| [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜G） |
+| [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜H） |
 | [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) | プライバシーポリシー（公開前に〔 〕内を記入すること） |
 | [`docs/TERMS_OF_SERVICE.md`](docs/TERMS_OF_SERVICE.md) | 利用規約（公開前に〔 〕内を記入すること） |
 

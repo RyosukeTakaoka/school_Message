@@ -135,8 +135,21 @@ Xcode 側でコンテナ名を選び直すだけで揃います。
 
 ## 公開前にやること（プライバシーポリシー・利用規約）
 
-1. [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md) と [`TERMS_OF_SERVICE.md`](TERMS_OF_SERVICE.md) の
-   `〔 〕` で囲んだ箇所（開発者名・連絡先・管轄裁判所）をすべて記入する。
+規約はアプリ内にも実装されています。初回起動時に同意画面が出て、同意するまで
+アプリを使えません（同意前は iCloud への接続も行いません）。同意後は
+プロフィール画面の「規約」からいつでも読み返せます。
+
+> **文書は 2 か所にあります。両方を必ず同時に更新してください。**
+>
+> | 場所 | 用途 |
+> |---|---|
+> | `docs/PRIVACY_POLICY.md` / `docs/TERMS_OF_SERVICE.md` | Web 公開用（App Store Connect が要求する URL） |
+> | `SchoolMessage/Features/Legal/LegalText.swift` | アプリ内表示用（表組みを箇条書きに直したもの） |
+>
+> 内容を実質的に変更したら、`ConsentStore.currentVersion` の日付も上げてください。
+> 上げると、既に同意済みの利用者にも同意画面がもう一度表示されます。
+
+1. 上記 2 か所の `〔 〕` で囲んだ箇所（開発者名・連絡先・管轄裁判所）をすべて記入する。
 2. **公開 URL を用意する。** App Store Connect はプライバシーポリシーの URL を必須で求めます。
    最も手軽なのは GitHub Pages です（リポジトリの Settings → Pages → Source を
    `main` / `docs` にすると `https://<ユーザ名>.github.io/school_Message/PRIVACY_POLICY.html`

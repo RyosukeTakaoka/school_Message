@@ -15,10 +15,11 @@ struct SchoolMessageApp: App {
                 .environment(demoTrigger)
                 .task {
                     AppDelegate.environment = environment
-                    // サイレント通知でアプリを起こせるようにするための登録.
-                    // 許可のダイアログは出ない(許可を求めるのは最初のチャットを開いたとき).
-                    environment.pushService.registerForRemoteNotifications()
-                    await environment.store.start()
+                    await startIfConsented()
+                }
+                .onChange(of: environment.consent.hasAgreedToCurrentVersion) { _, agreed in
+                    guard agreed else { return }
+                    Task { await startIfConsented() }
                 }
                 .onChange(of: demoTrigger.isRequested) { _, requested in
                     guard requested else { return }
@@ -36,6 +37,18 @@ struct SchoolMessageApp: App {
                 break
             }
         }
+    }
+
+    /// 規約に同意済みのときだけ, iCloud への接続を開始する.
+    ///
+    /// 同意前にサーバへ問い合わせないことで, 「同意していないのに通信が
+    /// 始まっている」状態を作らない. 同意した瞬間に呼び直される.
+    private func startIfConsented() async {
+        guard environment.consent.hasAgreedToCurrentVersion else { return }
+        // サイレント通知でアプリを起こせるようにするための登録.
+        // 許可のダイアログは出ない(許可を求めるのは最初のチャットを開いたとき).
+        environment.pushService.registerForRemoteNotifications()
+        await environment.store.start()
     }
 
     /// バックエンドをサンプルデータ入りのインメモリ実装に差し替える.

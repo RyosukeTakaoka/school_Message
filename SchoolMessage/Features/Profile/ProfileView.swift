@@ -13,6 +13,7 @@ struct ProfileView: View {
     @State private var isSaving = false
     @State private var isConfirmingSignOut = false
     @State private var didCopyHandle = false
+    @State private var readingDocument: LegalDocument?
 
     private var store: ChatStore { environment.store }
 
@@ -77,6 +78,8 @@ struct ProfileView: View {
 
                 notificationSection
 
+                legalSection
+
                 Section {
                     Button(String(localized: "ログアウト"), role: .destructive) {
                         isConfirmingSignOut = true
@@ -106,6 +109,9 @@ struct ProfileView: View {
             .onChange(of: imagePickerItem) { _, newValue in
                 guard let newValue else { return }
                 Task { imageData = try? await newValue.loadTransferable(type: Data.self) }
+            }
+            .sheet(item: $readingDocument) { document in
+                LegalDocumentScreen(document: document)
             }
             .confirmationDialog(
                 String(localized: "ログアウトしますか?"),
@@ -182,6 +188,36 @@ struct ProfileView: View {
                 }
                 .font(.footnote)
             }
+        }
+    }
+
+    /// 同意した規約をあとから読み返せるようにする.
+    private var legalSection: some View {
+        Section {
+            Button {
+                readingDocument = .termsOfService
+            } label: {
+                legalRow(String(localized: "利用規約"))
+            }
+            Button {
+                readingDocument = .privacyPolicy
+            } label: {
+                legalRow(String(localized: "プライバシーポリシー"))
+            }
+        } header: {
+            Text("規約")
+        } footer: {
+            Text("このアプリを使いはじめたときに同意いただいた内容です。")
+        }
+    }
+
+    private func legalRow(_ title: String) -> some View {
+        HStack {
+            Text(title).foregroundStyle(Color.primary)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.footnote)
+                .foregroundStyle(Palette.subdued)
         }
     }
 

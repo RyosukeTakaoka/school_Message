@@ -16,6 +16,7 @@ final class AppEnvironment {
     let networkMonitor: NetworkMonitor
     let notificationPreferences: NotificationPreferences
     let pushService: PushNotificationService
+    let consent: ConsentStore
 
     private init(
         backend: any ChatBackend,
@@ -23,7 +24,8 @@ final class AppEnvironment {
         mediaLoader: MediaLoader,
         networkMonitor: NetworkMonitor,
         notificationPreferences: NotificationPreferences,
-        pushService: PushNotificationService
+        pushService: PushNotificationService,
+        consent: ConsentStore
     ) {
         self.backend = backend
         self.store = store
@@ -31,6 +33,7 @@ final class AppEnvironment {
         self.networkMonitor = networkMonitor
         self.notificationPreferences = notificationPreferences
         self.pushService = pushService
+        self.consent = consent
         pushService.attach(store: store)
     }
 
@@ -73,7 +76,8 @@ final class AppEnvironment {
             mediaLoader: MediaLoader(backend: backend),
             networkMonitor: networkMonitor,
             notificationPreferences: preferences,
-            pushService: PushNotificationService(preferences: preferences)
+            pushService: PushNotificationService(preferences: preferences),
+            consent: ConsentStore()
         )
     }
 }
