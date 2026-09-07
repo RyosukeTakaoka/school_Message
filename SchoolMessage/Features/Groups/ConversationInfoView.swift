@@ -18,9 +18,12 @@ struct ConversationInfoView: View {
         conversation.ownerID == store.currentUserID
     }
 
-    /// まだこのグループにいない友達.
+    /// まだこのグループにいない, 追加できる相手.
+    ///
+    /// 友達だけでなく, すでに会話がある相手も候補に含める
+    /// (`ChatStore.groupMemberCandidates` を参照).
     private var addableFriends: [UserProfile] {
-        store.friends.filter { !conversation.participantIDs.contains($0.id) }
+        store.groupMemberCandidates.filter { !conversation.participantIDs.contains($0.id) }
     }
 
     var body: some View {

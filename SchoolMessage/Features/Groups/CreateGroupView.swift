@@ -16,6 +16,11 @@ struct CreateGroupView: View {
 
     private var store: ChatStore { environment.store }
 
+    /// 友達に加えて, すでに会話がある相手も候補に含める.
+    /// (`Friendship` は追加した側にしか作られないため, 友達一覧だけでは
+    /// 「毎日やり取りしているのに候補に出ない」相手が生まれる)
+    private var candidates: [UserProfile] { store.groupMemberCandidates }
+
     private var canCreate: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !selectedMemberIDs.isEmpty
@@ -55,12 +60,12 @@ struct CreateGroupView: View {
                 }
 
                 Section {
-                    if store.friends.isEmpty {
-                        Text("まだ友達がいません。下のボタンから追加してください。")
+                    if candidates.isEmpty {
+                        Text("追加できる相手がまだいません。下のボタンからユーザIDで検索して追加してください。")
                             .font(.footnote)
                             .foregroundStyle(Palette.subdued)
                     } else {
-                        ForEach(store.friends) { friend in
+                        ForEach(candidates) { friend in
                             memberRow(friend)
                         }
                     }

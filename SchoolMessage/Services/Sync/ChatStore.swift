@@ -362,6 +362,31 @@ final class ChatStore {
         conversations.first { $0.id == id }
     }
 
+    /// グループに入れられる相手の候補.
+    ///
+    /// 「友達」だけでは足りない. `Friendship` は追加した側にしか作られないため,
+    /// 相手から追加されて始まったチャットの相手は, 現に毎日やり取りしていても
+    /// 自分の友達一覧には出てこない. その状態で「まだ友達がいません」と出ると,
+    /// 目の前にチャットがあるのにグループを作れず, 理由も分からない.
+    ///
+    /// そこで, 友達に加えて **すでに会話がある相手** も候補に含める.
+    /// 会話の相手は当然「知っている人」であり, 候補から外す理由がない.
+    var groupMemberCandidates: [UserProfile] {
+        guard let me = myProfile?.id else { return [] }
+
+        var candidateIDs = Set(friends.map(\.id))
+        for conversation in conversations {
+            candidateIDs.formUnion(conversation.participantIDs)
+        }
+        candidateIDs.remove(me)
+
+        // プロフィールが取れていない相手は名前もアイコンも出せないので除く
+        // (会話一覧の取得時に `loadMissingProfiles` で埋めている).
+        return candidateIDs
+            .compactMap { profilesByID[$0] }
+            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+    }
+
     /// チャット一覧・ヘッダに出す名前.
     func title(for conversation: Conversation) -> String {
         if let title = conversation.title, !title.isEmpty { return title }
