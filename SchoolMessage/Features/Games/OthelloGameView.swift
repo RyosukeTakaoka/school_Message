@@ -17,7 +17,9 @@ struct OthelloGameView: View {
     private var store: ChatStore { environment.store }
 
     /// いまの盤面. メッセージ側が更新されると自動で追従する.
-    private var snapshot: GameSnapshot? { store.currentGame(in: conversationID) }
+    private var snapshot: OthelloSnapshot? {
+        store.currentGame(kind: .othello, in: conversationID)?.othello
+    }
 
     private var myDisc: OthelloDisc? {
         guard let snapshot, let me = store.currentUserID else { return nil }
@@ -105,7 +107,7 @@ struct OthelloGameView: View {
     }
 
     @ViewBuilder
-    private func statusLine(_ snapshot: GameSnapshot, board: OthelloBoard) -> some View {
+    private func statusLine(_ snapshot: OthelloSnapshot, board: OthelloBoard) -> some View {
         if snapshot.isFinished {
             let winner = board.winner
             Text(resultText(winner: winner))
@@ -200,7 +202,7 @@ struct OthelloGameView: View {
     }
 
     @ViewBuilder
-    private func footer(_ snapshot: GameSnapshot) -> some View {
+    private func footer(_ snapshot: OthelloSnapshot) -> some View {
         if snapshot.isFinished {
             Button(String(localized: "もう一局")) {
                 Task { await startGame() }
@@ -226,7 +228,7 @@ struct OthelloGameView: View {
         defer { isSending = false }
         // 先手(黒)は始めた人にする.
         await store.sendGameMove(
-            .newOthello(black: me, white: opponent),
+            .othello(.new(black: me, white: opponent)),
             in: conversationID
         )
     }
@@ -235,7 +237,7 @@ struct OthelloGameView: View {
         guard isMyTurn, let snapshot, let next = snapshot.placing(at: index) else { return }
         isSending = true
         defer { isSending = false }
-        await store.sendGameMove(next, in: conversationID)
+        await store.sendGameMove(.othello(next), in: conversationID)
     }
 }
 

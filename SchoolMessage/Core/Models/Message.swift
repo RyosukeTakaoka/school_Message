@@ -15,7 +15,7 @@ enum MessageContent: Hashable, Sendable {
     case text(String)
     case image(MediaAttachment)
     case video(MediaAttachment)
-    /// チャットに付随する対戦(オセロ)の 1 手.
+    /// チャットに付随する対戦(オセロ・色勝負)の 1 手.
     case game(GameSnapshot)
 
     /// 添付を持つケースの共通アクセサ.

@@ -192,20 +192,22 @@ extension ChatStore {
         }
     }
 
-    // MARK: - 対戦(オセロ)
+    // MARK: - 対戦
 
     /// この会話でいま進行している対戦.
     ///
-    /// 1 手 = 1 メッセージなので, 最後の対戦メッセージが現在の盤面になる.
-    func currentGame(in conversationID: ConversationID) -> GameSnapshot? {
+    /// 1 手 = 1 メッセージなので, その遊びの最後のメッセージが現在の状態になる.
+    /// 遊びが複数あるので, 種類ごとに分けて探す(オセロの途中で色勝負を始めても,
+    /// お互いの状態を上書きしないように).
+    func currentGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) -> GameSnapshot? {
         messagesByConversation[conversationID]?
-            .last(where: { $0.content.game != nil && !$0.isUnsent })?
+            .last(where: { $0.content.game?.kind == kind && !$0.isUnsent })?
             .content.game
     }
 
-    /// 対戦を始める / 石を置く.
+    /// 対戦を始める / 1 手を進める.
     ///
-    /// 盤面をまるごと載せたメッセージを送るだけなので, 送信の仕組みは
+    /// その時点の状態をまるごと載せたメッセージを送るだけなので, 送信の仕組みは
     /// 通常のメッセージと同じ(オフラインなら送信待ちに積まれる).
     func sendGameMove(_ snapshot: GameSnapshot, in conversationID: ConversationID) async {
         guard let me = currentUserID else { return }

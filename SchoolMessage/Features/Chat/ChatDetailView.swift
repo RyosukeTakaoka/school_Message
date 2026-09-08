@@ -15,8 +15,8 @@ struct ChatDetailView: View {
     @State private var highlightedMessageID: MessageID?
     /// 送信取り消しの確認中のメッセージ.
     @State private var unsendCandidate: Message?
-    /// オセロの盤面を開いているか.
-    @State private var isShowingGame = false
+    /// 開いている対戦の種類. nil なら閉じている.
+    @State private var activeGame: GameSnapshot.Kind?
 
     private var store: ChatStore { environment.store }
 
@@ -71,7 +71,7 @@ struct ChatDetailView: View {
                                     scrollToOriginal(original, using: proxy)
                                 },
                                 onUnsend: { unsendCandidate = message },
-                                onOpenGame: { isShowingGame = true }
+                                onOpenGame: { activeGame = $0 }
                             )
                             .id(message.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -120,13 +120,19 @@ struct ChatDetailView: View {
             ToolbarItem(placement: .principal) {
                 header
             }
-            // オセロは 1 対 1 のチャットに付随する遊びなので, グループには出さない.
+            // 対戦は 1 対 1 のチャットに付随する遊びなので, グループには出さない.
             if conversation.kind == .direct {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isShowingGame = true
+                    Menu {
+                        ForEach(GameSnapshot.Kind.allCases) { kind in
+                            Button {
+                                activeGame = kind
+                            } label: {
+                                Label(kind.title, systemImage: kind.symbolName)
+                            }
+                        }
                     } label: {
-                        Label(String(localized: "オセロ"), systemImage: "circle.righthalf.filled")
+                        Label(String(localized: "対戦"), systemImage: "gamecontroller")
                     }
                 }
             }
@@ -141,8 +147,13 @@ struct ChatDetailView: View {
         .sheet(isPresented: $isShowingInfo) {
             ConversationInfoView(conversation: conversation)
         }
-        .sheet(isPresented: $isShowingGame) {
-            OthelloGameView(conversationID: conversation.id)
+        .sheet(item: $activeGame) { kind in
+            switch kind {
+            case .othello:
+                OthelloGameView(conversationID: conversation.id)
+            case .colorBattle:
+                ColorBattleGameView(conversationID: conversation.id)
+            }
         }
         .fullScreenCover(item: $viewingMedia) { attachment in
             MediaViewerScreen(attachment: attachment, conversationID: conversation.id)

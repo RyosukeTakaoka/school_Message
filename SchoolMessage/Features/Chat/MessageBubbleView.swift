@@ -27,7 +27,7 @@ struct MessageBubbleView: View {
     /// 「送信を取り消す」を選んだ. 確認は呼び出し側で取る.
     var onUnsend: () -> Void = {}
     /// 対戦のカードをタップした.
-    var onOpenGame: () -> Void = {}
+    var onOpenGame: (GameSnapshot.Kind) -> Void = { _ in }
 
     private var store: ChatStore { environment.store }
     private var isOutgoing: Bool { message.senderID == store.currentUserID }
@@ -196,17 +196,17 @@ struct MessageBubbleView: View {
         }
     }
 
-    /// 対戦の状況を出すカード. タップで盤面を開く.
+    /// 対戦の状況を出すカード. タップで対戦の画面を開く.
     private func gameBubble(_ snapshot: GameSnapshot) -> some View {
         Button {
-            onOpenGame()
+            onOpenGame(snapshot.kind)
         } label: {
             HStack(spacing: AppConstants.Layout.standardSpacing) {
-                Image(systemName: "circle.righthalf.filled")
+                Image(systemName: snapshot.kind.symbolName)
                     .font(.title2)
                     .foregroundStyle(Color.accentColor)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("オセロ")
+                    Text(snapshot.kind.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.primary)
                     Text(gameStatusText(snapshot))
@@ -229,12 +229,34 @@ struct MessageBubbleView: View {
     }
 
     private func gameStatusText(_ snapshot: GameSnapshot) -> String {
-        guard let board = snapshot.othelloBoard else { return String(localized: "対戦中") }
+        switch snapshot {
+        case .othello(let state): othelloStatusText(state)
+        case .colorBattle(let state): colorBattleStatusText(state)
+        }
+    }
+
+    private func othelloStatusText(_ state: OthelloSnapshot) -> String {
+        guard let board = state.othelloBoard else { return String(localized: "対戦中") }
         let score = String(localized: "黒 \(board.count(of: .black)) - 白 \(board.count(of: .white))")
-        if snapshot.isFinished {
+        if state.isFinished {
             return String(localized: "対戦終了 · \(score)")
         }
-        if let me = store.currentUserID, snapshot.isTurn(of: me) {
+        if let me = store.currentUserID, state.isTurn(of: me) {
+            return String(localized: "あなたの番 · \(score)")
+        }
+        return String(localized: "相手の番 · \(score)")
+    }
+
+    private func colorBattleStatusText(_ state: ColorBattleSnapshot) -> String {
+        guard let me = store.currentUserID,
+              let opponent = state.opponentID(of: me) else {
+            return state.isFinished ? String(localized: "対戦終了") : String(localized: "対戦中")
+        }
+        let score = String(localized: "あなた \(state.score(for: me)) - 相手 \(state.score(for: opponent))")
+        if state.isFinished {
+            return String(localized: "対戦終了 · \(score)")
+        }
+        if state.isTurn(of: me) {
             return String(localized: "あなたの番 · \(score)")
         }
         return String(localized: "相手の番 · \(score)")

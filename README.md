@@ -17,6 +17,8 @@
 | 写真・動画 | フォトライブラリからの選択、その場で撮影、圧縮とサムネイル生成、タップで拡大 / 全画面再生 |
 | 未読 | チャットごとの未読数、開いたら既読 |
 | 通知 | 新着メッセージのプッシュ通知（本文表示の on/off つき） |
+| 掲示板 | スレッド作成、書き込み、スレッドごとに変わる短い ID（**暗号化しない**） |
+| 遊び | 1 対 1 チャットに付随するオセロと色勝負（カード）。状態はチャットに残るので続きから遊べる |
 
 音声通話・スタンプ・タイムライン・広告などは意図的に入れていません。
 
@@ -67,7 +69,7 @@ docs/           設計・スキーマ・手順書
 | [`docs/SETUP.md`](docs/SETUP.md) | Xcode / CloudKit の設定手順 |
 | [`docs/CLOUDKIT_MANUAL_SETUP.md`](docs/CLOUDKIT_MANUAL_SETUP.md) | CloudKit を手動で設定する手順（通知・グループ・アイコンが動かないときの確認を含む） |
 | [`docs/cloudkit-schema.ckdb`](docs/cloudkit-schema.ckdb) | CloudKit スキーマの完成形。Console の Import Schema で読み込める |
-| [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜H） |
+| [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜K） |
 | [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) | プライバシーポリシー（公開前に〔 〕内を記入すること） |
 | [`docs/TERMS_OF_SERVICE.md`](docs/TERMS_OF_SERVICE.md) | 利用規約（公開前に〔 〕内を記入すること） |
 
