@@ -9,7 +9,10 @@ import Foundation
 ///   ストレージ逼迫時に OS が回収するのに任せる.
 struct MediaStore: Sendable {
 
-    private let fileManager: FileManager
+    /// `FileManager` は Sendable ではないので保持しない.
+    /// `.default` は複数スレッドからの利用を想定した共有インスタンスなので,
+    /// 必要なときに都度取り出す.
+    private var fileManager: FileManager { .default }
 
     let outboxDirectory: URL
     let cacheDirectory: URL
@@ -20,9 +23,8 @@ struct MediaStore: Sendable {
     ///
     /// 標準のディレクトリが取得できない状況(まず起きないが)でアプリが起動不能に
     /// なるのは望ましくないので, 一時ディレクトリにフォールバックする.
-    init(fileManager: FileManager = .default) {
-        self.fileManager = fileManager
-
+    init() {
+        let fileManager = FileManager.default
         let temporaryRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         let appSupport = (try? fileManager.url(
             for: .applicationSupportDirectory,

@@ -731,7 +731,13 @@ actor CloudKitBackend: ChatBackend {
         return info
     }
 
-    func handleRemoteNotification(userInfo: [AnyHashable: Any]) async {
+    /// 通知の payload を受け取る.
+    ///
+    /// `nonisolated` にしてあるのは, APNs から渡る `[AnyHashable: Any]` が
+    /// Sendable ではないため. アクターの中へ持ち込むと, 別スレッドから同じ辞書を
+    /// 触る可能性を型の上で否定できない. ここでは辞書をその場で読み切り,
+    /// 以降は Sendable な値(会話 ID)だけを流す.
+    nonisolated func handleRemoteNotification(userInfo: [AnyHashable: Any]) async {
         guard let notification = CKNotification(fromRemoteNotificationDictionary: userInfo) else {
             return
         }
@@ -758,7 +764,9 @@ actor CloudKitBackend: ChatBackend {
     }
 
     /// 通知の payload から会話を割り出してイベントを流す.
-    private func emitMessagesChanged(from notification: CKQueryNotification) {
+    ///
+    /// `eventHub` は `let` かつ Sendable なので, アクターの外から呼んでも安全.
+    private nonisolated func emitMessagesChanged(from notification: CKQueryNotification) {
         // 参照フィールドは payload では recordName の文字列として届くが,
         // 環境によっては CKRecord.Reference のまま渡ることがあるため両方受ける.
         let raw = notification.recordFields?[CKSchema.Message.conversation]

@@ -205,6 +205,7 @@ struct ChatListRow: View {
             onShowFriends: {},
             onCreateGroup: {},
             onShowBoard: {},
+            onShowStreetPass: {},
             onShowProfile: {}
         )
     }

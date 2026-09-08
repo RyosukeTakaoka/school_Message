@@ -118,7 +118,7 @@ actor CryptoService {
 
         let ephemeral = Curve25519.KeyAgreement.PrivateKey()
         let sharedSecret = try ephemeral.sharedSecretFromKeyAgreement(with: recipientKey)
-        let wrappingKey = try sharedSecret.hkdfDerivedSymmetricKey(
+        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
             using: SHA256.self,
             salt: Self.keyWrapSalt,
             sharedInfo: ephemeral.publicKey.rawRepresentation + publicKeyData,
@@ -146,7 +146,7 @@ actor CryptoService {
         }
 
         let sharedSecret = try identity.sharedSecretFromKeyAgreement(with: ephemeralPublic)
-        let wrappingKey = try sharedSecret.hkdfDerivedSymmetricKey(
+        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
             using: SHA256.self,
             salt: Self.keyWrapSalt,
             sharedInfo: wrapped.ephemeralPublicKey + identity.publicKey.rawRepresentation,

@@ -353,5 +353,5 @@ actor InMemoryChatBackend: ChatBackend {
         [CKSchema.SubscriptionID.newMessages, CKSchema.SubscriptionID.conversations]
     }
 
-    func handleRemoteNotification(userInfo: [AnyHashable: Any]) async {}
+    nonisolated func handleRemoteNotification(userInfo: [AnyHashable: Any]) async {}
 }
