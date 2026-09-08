@@ -19,6 +19,7 @@
 | 通知 | 新着メッセージのプッシュ通知（本文表示の on/off つき） |
 | 掲示板 | スレッド作成、書き込み、スレッドごとに変わる短い ID（**暗号化しない**） |
 | 遊び | 1 対 1 チャットに付随するオセロと色勝負（カード）。状態はチャットに残るので続きから遊べる |
+| すれ違い通信 | 近くの端末と Bluetooth で名刺を自動交換（**既定は切**、サーバーを通らない） |
 
 音声通話・スタンプ・タイムライン・広告などは意図的に入れていません。
 
@@ -47,6 +48,7 @@ SchoolMessage/
     Sync/       ChatStore（画面が読む唯一の状態）
     Network/    到達性の監視
     Notifications/  プッシュと通知設定
+    StreetPass/ すれ違い通信（Bluetooth）
   Features/     画面（SwiftUI）
 Config/         Info.plist と entitlements
 docs/           設計・スキーマ・手順書
@@ -66,10 +68,11 @@ docs/           設計・スキーマ・手順書
 | [`docs/CLOUDKIT_SCHEMA.md`](docs/CLOUDKIT_SCHEMA.md) | レコードタイプ、フィールド、必要なインデックス |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | 暗号化の設計、なりすまし対策、既知の限界 |
 | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | 通知の仕組みと、本文を確実に出すための次の一手 |
+| [`docs/STREETPASS.md`](docs/STREETPASS.md) | すれ違い通信の仕組み・渡る情報・動く条件と限界 |
 | [`docs/SETUP.md`](docs/SETUP.md) | Xcode / CloudKit の設定手順 |
 | [`docs/CLOUDKIT_MANUAL_SETUP.md`](docs/CLOUDKIT_MANUAL_SETUP.md) | CloudKit を手動で設定する手順（通知・グループ・アイコンが動かないときの確認を含む） |
 | [`docs/cloudkit-schema.ckdb`](docs/cloudkit-schema.ckdb) | CloudKit スキーマの完成形。Console の Import Schema で読み込める |
-| [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜K） |
+| [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜L） |
 | [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) | プライバシーポリシー（公開前に〔 〕内を記入すること） |
 | [`docs/TERMS_OF_SERVICE.md`](docs/TERMS_OF_SERVICE.md) | 利用規約（公開前に〔 〕内を記入すること） |
 

@@ -32,10 +32,20 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>動画を撮影するときに音声を録音するために使います。</string>
 
-	<!-- サイレント通知で新着メッセージを取り込み, 復号した本文を通知に出すため. -->
+	<!-- すれ違い通信. 近くの端末に自分の名刺を配り, 相手の名刺を読むために使う.
+	     位置情報は取得しない. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>すれ違い通信で、近くにいる友達と自動で名刺を交換するために使います。設定で切ることができます。</string>
+
+	<!-- remote-notification: サイレント通知で新着メッセージを取り込み, 復号した本文を通知に出すため.
+	     bluetooth-central / bluetooth-peripheral: アプリを閉じている間もすれ違えるようにするため.
+	     いずれも Xcode の Signing & Capabilities での操作は不要
+	     (Background Modes は Info.plist だけで有効になり, 専用の entitlement を持たない). -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
 	</array>
 
 	<!-- iPad はすべての向きに対応する. 机上でも手持ちでも同じように使えるように. -->

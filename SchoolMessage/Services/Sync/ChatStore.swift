@@ -448,6 +448,24 @@ final class ChatStore {
         }
     }
 
+    /// 識別子から人を引く. 手元にあればそれを, 無ければ取りに行く.
+    ///
+    /// すれ違い通信のように「ID しか分かっていない相手」を, 友達追加や
+    /// チャット開始に使える形(公開鍵つき)に直すために使う.
+    func resolveProfile(_ userID: UserID) async -> UserProfile? {
+        if let cached = profilesByID[userID] { return cached }
+        do {
+            let profiles = try await backend.fetchProfiles(ids: [userID])
+            for profile in profiles {
+                profilesByID[profile.id] = profile
+            }
+            return profiles.first { $0.id == userID }
+        } catch {
+            banner = AppError.wrap(error)
+            return nil
+        }
+    }
+
     func addFriend(_ profile: UserProfile) async {
         do {
             try await backend.addFriend(profile.id)

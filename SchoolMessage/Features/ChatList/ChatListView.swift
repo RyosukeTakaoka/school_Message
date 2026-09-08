@@ -13,6 +13,7 @@ struct ChatListView: View {
     var onShowFriends: () -> Void
     var onCreateGroup: () -> Void
     var onShowBoard: () -> Void
+    var onShowStreetPass: () -> Void
     var onShowProfile: () -> Void
 
     private var store: ChatStore { environment.store }
@@ -62,6 +63,18 @@ struct ChatListView: View {
                 }
                 Button(action: onShowBoard) {
                     Label(String(localized: "掲示板"), systemImage: "text.bubble")
+                }
+                Button(action: onShowStreetPass) {
+                    Label(String(localized: "すれ違い通信"), systemImage: "figure.walk.motion")
+                }
+                .overlay(alignment: .topTrailing) {
+                    // すれ違った相手がいることは, 開かないと気付けないので印を出す.
+                    if environment.streetPass.unseenCount > 0 {
+                        Circle()
+                            .fill(Palette.unreadBadge)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 4, y: -2)
+                    }
                 }
             }
             ToolbarItem(placement: .topBarLeading) {

@@ -15,5 +15,6 @@ enum Log {
     static let sync = Logger(subsystem: subsystem, category: "sync")
     static let outbox = Logger(subsystem: subsystem, category: "outbox")
     static let push = Logger(subsystem: subsystem, category: "push")
+    static let streetPass = Logger(subsystem: subsystem, category: "streetpass")
     static let ui = Logger(subsystem: subsystem, category: "ui")
 }

@@ -97,7 +97,7 @@ private struct MainSplitView: View {
     @State private var presentedSheet: Sheet?
 
     private enum Sheet: String, Identifiable {
-        case friends, createGroup, board, profile
+        case friends, createGroup, board, streetPass, profile
         var id: String { rawValue }
     }
 
@@ -110,6 +110,7 @@ private struct MainSplitView: View {
                 onShowFriends: { presentedSheet = .friends },
                 onCreateGroup: { presentedSheet = .createGroup },
                 onShowBoard: { presentedSheet = .board },
+                onShowStreetPass: { presentedSheet = .streetPass },
                 onShowProfile: { presentedSheet = .profile }
             )
             .navigationSplitViewColumnWidth(
@@ -137,6 +138,8 @@ private struct MainSplitView: View {
                 CreateGroupView()
             case .board:
                 BoardView()
+            case .streetPass:
+                StreetPassView()
             case .profile:
                 ProfileView()
             }

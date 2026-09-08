@@ -21,6 +21,10 @@ struct SchoolMessageApp: App {
                     guard agreed else { return }
                     Task { await startIfConsented() }
                 }
+                .onChange(of: environment.store.myProfile) { _, _ in
+                    // 名前が決まってから電波を出す(名前の無い名刺は相手側で捨てられる).
+                    environment.streetPass.refresh()
+                }
                 .onChange(of: demoTrigger.isRequested) { _, requested in
                     guard requested else { return }
                     Task { await enterDemoMode() }
@@ -31,6 +35,7 @@ struct SchoolMessageApp: App {
             case .active:
                 // 復帰時に取りこぼした新着を取り込み, 送信待ちを流す.
                 environment.store.handleForeground()
+                environment.streetPass.handleForeground()
             case .background:
                 Task { await environment.pushService.updateBadge() }
             default:

@@ -17,6 +17,7 @@ final class AppEnvironment {
     let notificationPreferences: NotificationPreferences
     let pushService: PushNotificationService
     let consent: ConsentStore
+    let streetPass: StreetPassStore
 
     private init(
         backend: any ChatBackend,
@@ -25,7 +26,8 @@ final class AppEnvironment {
         networkMonitor: NetworkMonitor,
         notificationPreferences: NotificationPreferences,
         pushService: PushNotificationService,
-        consent: ConsentStore
+        consent: ConsentStore,
+        streetPass: StreetPassStore
     ) {
         self.backend = backend
         self.store = store
@@ -34,7 +36,9 @@ final class AppEnvironment {
         self.notificationPreferences = notificationPreferences
         self.pushService = pushService
         self.consent = consent
+        self.streetPass = streetPass
         pushService.attach(store: store)
+        streetPass.attach(store: store)
     }
 
     /// 本番構成(CloudKit).
@@ -77,7 +81,8 @@ final class AppEnvironment {
             networkMonitor: networkMonitor,
             notificationPreferences: preferences,
             pushService: PushNotificationService(preferences: preferences),
-            consent: ConsentStore()
+            consent: ConsentStore(),
+            streetPass: StreetPassStore()
         )
     }
 }
