@@ -169,6 +169,26 @@ Xcode の画面上で有効になっている場合だけ**です。
 > それでも空なら、アプリの「購読をもう一度設定する」を押して、
 > 出てくるエラー文を教えてください。
 
+### 「全部 ✅」でも安心しないこと
+
+診断が緑なのは、**そのビルドが使っている環境**についてだけ。
+
+| ビルド | CloudKit 環境 | 購読の置き場所 |
+|---|---|---|
+| Xcode から実行 | **Development** | Development |
+| TestFlight | **Production** | Production |
+
+購読は**環境ごと・利用者ごと**に作られる。Xcode 版で作られた
+`sub-new-messages-v1` は Development にしか無く、TestFlight 版は
+Production 側にもう一度作り直す（アプリが起動時に自動でやる）。
+
+**つまり Xcode 版が全部 ✅ でも、TestFlight 版で同じとは限らない。**
+TestFlight に上げたら、その版でもう一度診断すること。
+
+また、Development と Production はデータも別なので、
+**Xcode 版で作ったプロフィール・友達・メッセージは TestFlight 版には出てこない**
+（逆も同じ）。消えたわけではないので慌てないこと。
+
 ### 通知が実際に届くか
 
 1. iPad A でチャットを開き、**iPad B はホーム画面に戻す**
@@ -293,6 +313,7 @@ TestFlight 版は **Production** の CloudKit を使います。
 | 症状 | 見るところ |
 |---|---|
 | 通知が来ない | 手順 3（capability）→ 手順 5（診断）→ `docs/CLOUDKIT_MANUAL_SETUP.md` |
+| Development では届くが TestFlight では届かない | **まず 2 台の iPadOS の版を確認**。26.4 ちょうどなら既知の OS 不具合。26.4.1 以降に更新する（`docs/CLOUDKIT_MANUAL_SETUP.md`）|
 | 掲示板が動かない | 手順 2（Deploy し忘れ） |
 | すれ違わない | `docs/STREETPASS.md` の「7. うまくいかないときの確認順」 |
 | ビルドエラー | エラー文をそのまま貼ってください |

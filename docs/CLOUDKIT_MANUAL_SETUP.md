@@ -234,6 +234,29 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 | 「3. サーバの購読」が × | 本文書の手順 3（インデックス）と 4（デプロイ）を実施。そのうえで「購読をもう一度設定する」を押す |
 | **すべて ✅ なのに来ない** | **下記「Xcode 側の確認」へ。** 購読も端末登録もできているのに届かない場合、APNs の環境（sandbox / production）の食い違いが最有力です |
 
+### iPadOS の版を確認する（Development では届くのに Production だけ届かない場合）
+
+**iOS / iPadOS 26.4 に、CloudKit のプッシュが届かなくなる不具合があった。**
+26.4.1（2026年4月8日公開）で修正済み。
+
+症状がこれと一致する場合、アプリ側では直せない。
+
+| 症状 | この不具合か |
+|---|---|
+| Xcode から実行した版（Development）では通知が届く | ○ |
+| TestFlight 版（Production）では届かない | ○ |
+| 購読は Console に存在し、診断も全部 ✅ | ○ |
+| 端末が **26.4 ちょうど** | ○ |
+
+**確認**: iPad の 設定 → 一般 → 情報 → ソフトウェアバージョン。
+**対処**: 26.4.1 以降に更新する。**2 台とも**確認すること。
+
+出典:
+- [CKQuerySubscription on public database never triggers APNS push in Production environment](https://developer.apple.com/forums/thread/820562)
+- [Apple Releases OS 26.4.1 to Fix CloudKit Syncing Bug](https://tidbits.com/2026/04/09/apple-releases-ios-26-4-1-and-ipados-26-4-1-to-fix-cloudkit-syncing-bug/)
+
+---
+
 ### Xcode 側の確認（購読が ✅ でも通知が来ない場合）
 
 `Config/SchoolMessage.entitlements` には `aps-environment = development` と
