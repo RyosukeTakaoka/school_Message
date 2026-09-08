@@ -95,9 +95,10 @@ private struct MainSplitView: View {
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var presentedSheet: Sheet?
+    @State private var isShowingBoard = false
 
     private enum Sheet: String, Identifiable {
-        case friends, createGroup, board, streetPass, profile
+        case friends, createGroup, streetPass, profile
         var id: String { rawValue }
     }
 
@@ -109,7 +110,7 @@ private struct MainSplitView: View {
                 selection: $store.selectedConversationID,
                 onShowFriends: { presentedSheet = .friends },
                 onCreateGroup: { presentedSheet = .createGroup },
-                onShowBoard: { presentedSheet = .board },
+                onShowBoard: { isShowingBoard = true },
                 onShowStreetPass: { presentedSheet = .streetPass },
                 onShowProfile: { presentedSheet = .profile }
             )
@@ -136,13 +137,16 @@ private struct MainSplitView: View {
                 FriendsView()
             case .createGroup:
                 CreateGroupView()
-            case .board:
-                BoardView()
             case .streetPass:
                 StreetPassView()
             case .profile:
                 ProfileView()
             }
+        }
+        // チャットの一覧・書き込みが多いので、カード状のシートではなく
+        // 全画面で見せる.
+        .fullScreenCover(isPresented: $isShowingBoard) {
+            BoardView()
         }
         .onChange(of: store.pendingNotificationConversationID) { _, pending in
             // 通知をタップして指定されたチャットを開く.
