@@ -19,7 +19,7 @@
 | 通知 | 新着メッセージのプッシュ通知（本文表示の on/off つき） |
 | 掲示板 | スレッド作成、書き込み、スレッドごとに変わる短い ID（**暗号化しない**） |
 | 遊び | 1 対 1 チャットに付随するオセロと色勝負（カード）。状態はチャットに残るので続きから遊べる |
-| すれ違い通信 | 近くの端末と Bluetooth で名刺を自動交換（**既定は切**、サーバーを通らない） |
+| すれ違い通信 | 近くの端末と Bluetooth で名刺を自動交換（**既定は切**、サーバーを通らない）。アプリを閉じていても動く |
 
 音声通話・スタンプ・タイムライン・広告などは意図的に入れていません。
 
@@ -51,6 +51,7 @@ SchoolMessage/
     StreetPass/ すれ違い通信（Bluetooth）
   Features/     画面（SwiftUI）
 Config/         Info.plist と entitlements
+WidgetSource/   ロック画面表示（Live Activity）の中身。Widget Extension へ写す
 docs/           設計・スキーマ・手順書
 ```
 
@@ -68,7 +69,9 @@ docs/           設計・スキーマ・手順書
 | [`docs/CLOUDKIT_SCHEMA.md`](docs/CLOUDKIT_SCHEMA.md) | レコードタイプ、フィールド、必要なインデックス |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | 暗号化の設計、なりすまし対策、既知の限界 |
 | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | 通知の仕組みと、本文を確実に出すための次の一手 |
+| [`docs/TODAY.md`](docs/TODAY.md) | **Mac でやることの通し手順**（pull → CloudKit → 通知 → 実機 → TestFlight）|
 | [`docs/STREETPASS.md`](docs/STREETPASS.md) | すれ違い通信の仕組み・渡る情報・動く条件と限界 |
+| [`docs/LIVE_ACTIVITY.md`](docs/LIVE_ACTIVITY.md) | ロック画面表示（Live Activity）の追加手順と、期待できること |
 | [`docs/SETUP.md`](docs/SETUP.md) | Xcode / CloudKit の設定手順 |
 | [`docs/CLOUDKIT_MANUAL_SETUP.md`](docs/CLOUDKIT_MANUAL_SETUP.md) | CloudKit を手動で設定する手順（通知・グループ・アイコンが動かないときの確認を含む） |
 | [`docs/cloudkit-schema.ckdb`](docs/cloudkit-schema.ckdb) | CloudKit スキーマの完成形。Console の Import Schema で読み込める |

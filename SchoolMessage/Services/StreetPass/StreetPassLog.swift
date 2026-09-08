@@ -89,6 +89,11 @@ final class StreetPassLog: @unchecked Sendable {
         encounters.filter(\.isUnseen).count
     }
 
+    /// 今日すれ違った人数(ロック画面の表示に使う).
+    func todayCount(calendar: Calendar = .current, now: Date = .now) -> Int {
+        encounters.filter { calendar.isDate($0.lastMetAt, inSameDayAs: now) }.count
+    }
+
     func markAllSeen() {
         guard unseenCount > 0 else { return }
         for index in encounters.indices {

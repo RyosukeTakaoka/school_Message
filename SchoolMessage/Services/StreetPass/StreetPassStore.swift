@@ -55,6 +55,11 @@ final class StreetPassStore {
     var restoreCount: Int { kit.settings.restoreCount }
     var lastRestoredAt: Date? { kit.settings.lastRestoredAt }
 
+    /// 診断用. ロック画面表示(Live Activity)の状況.
+    var isLiveActivityAvailable: Bool { kit.liveActivity.isAvailable }
+    var isLiveActivityRunning: Bool { kit.liveActivity.isRunning }
+    var liveActivityError: String? { kit.liveActivity.lastError }
+
     init(kit: StreetPassKit = .shared) {
         self.kit = kit
         self.status = kit.status

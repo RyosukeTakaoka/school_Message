@@ -32,6 +32,7 @@ final class StreetPassKit: @unchecked Sendable {
 
     let settings: StreetPassSettings
     let log: StreetPassLog
+    let liveActivity: StreetPassLiveActivity
 
     private var radio: StreetPassRadio?
     private var hasBootstrapped = false
@@ -43,10 +44,12 @@ final class StreetPassKit: @unchecked Sendable {
 
     init(
         settings: StreetPassSettings = StreetPassSettings(),
-        log: StreetPassLog = StreetPassLog()
+        log: StreetPassLog = StreetPassLog(),
+        liveActivity: StreetPassLiveActivity = StreetPassLiveActivity()
     ) {
         self.settings = settings
         self.log = log
+        self.liveActivity = liveActivity
     }
 
     // MARK: - 起動
@@ -60,6 +63,9 @@ final class StreetPassKit: @unchecked Sendable {
         guard !hasBootstrapped else { return }
         hasBootstrapped = true
         guard settings.isEnabled else { return }
+        // ロック画面の表示は, すでに出ているものがあれば引き継ぐだけにする.
+        // ActivityKit の決まりで, 新しく出せるのは前面にいるときだけ.
+        liveActivity.adoptExisting()
         startRadio()
     }
 
@@ -72,7 +78,13 @@ final class StreetPassKit: @unchecked Sendable {
     func setEnabled(_ enabled: Bool) {
         guard settings.isEnabled != enabled else { return }
         settings.isEnabled = enabled
-        if enabled { startRadio() } else { stopRadio() }
+        if enabled {
+            startRadio()
+            startLiveActivity()
+        } else {
+            stopRadio()
+            liveActivity.stop()
+        }
     }
 
     var comment: String {
@@ -123,6 +135,9 @@ final class StreetPassKit: @unchecked Sendable {
         guard settings.isEnabled else { return }
         startRadio()
         radio?.rescan()
+        // 開始は前面からしかできない. 8 時間ほどで system に終了させられるので,
+        // 前面に戻るたびに出し直す(すでに出ていれば内容の更新だけになる).
+        startLiveActivity()
     }
 
     // MARK: - 無線
@@ -173,6 +188,28 @@ final class StreetPassKit: @unchecked Sendable {
             // 同じすれ違いの続き. 通知は出さない.
             break
         }
+        // 更新はバックグラウンドからでもできる.
+        liveActivity.update(activityState())
+    }
+
+    // MARK: - ロック画面の表示
+
+    private func startLiveActivity() {
+        guard settings.isEnabled else { return }
+        liveActivity.start(
+            ownerName: settings.card?.displayName ?? String(localized: "自分"),
+            state: activityState()
+        )
+    }
+
+    private func activityState() -> StreetPassActivityAttributes.ContentState {
+        let latest = log.encounters.first
+        return StreetPassActivityAttributes.ContentState(
+            todayCount: log.todayCount(),
+            totalCount: log.encounters.count,
+            latestName: latest?.card.displayName,
+            latestAt: latest?.lastMetAt
+        )
     }
 
     /// すれ違ったことを端末内の通知で知らせる.

@@ -198,6 +198,8 @@ Core Bluetooth（`bluetooth-central` / `bluetooth-peripheral`）だけ。
 
 ### Live Activity（ActivityKit）
 
+→ **入れた。** 手順は [`LIVE_ACTIVITY.md`](LIVE_ACTIVITY.md)。以下は判断の記録。
+
 **結論: 成功率は上がらない。ただし④の予防には効く。**
 
 よくある誤解だが、Live Activity は**バックグラウンド実行を与えない**。
@@ -219,8 +221,13 @@ Bluetooth の成功率そのものは 1% も変わらない。
 - 主アプリの Info.plist に `NSSupportsLiveActivities`
 - iPad のロック画面 Live Activity は iPadOS 17 以降（Dynamic Island は iPad に無い）
 
-いまは入れていない。「pull するだけ」で済む範囲を超えるため。
-入れるなら独立した作業として、手順を別に用意する。
+アプリ側のコードは入れてあるので、**pull するだけで
+「この端末で使えるかどうか」がすれ違い通信の画面に出る**。
+Widget Extension の追加は、そこが「使えます」だったときだけやればよい。
+使えない端末で作業しても、ロック画面には何も出ない。
+
+Widget Extension が無い間も、すれ違い通信そのものは通常どおり動く
+（`Activity.request` が失敗し、その理由が診断欄に出るだけ）。
 
 ---
 
@@ -305,7 +312,7 @@ Console.app で `subsystem:<bundle id> category:streetpass`。
 ## 8. 残っている課題
 
 - **④ 強制終了後**は打つ手がない。Live Activity による「終了させにくくする」
-  が唯一の緩和策
+  が唯一の緩和策（[`LIVE_ACTIVITY.md`](LIVE_ACTIVITY.md)）
 - 名刺の内容は署名していない。同じサービス UUID を実装すれば、他人の名前を
   名乗ることは技術的には可能。身内で使う前提の割り切り。
   必要になったら `UserProfile.publicKey` による署名を足す

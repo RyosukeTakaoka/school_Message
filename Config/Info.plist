@@ -32,6 +32,13 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>動画を撮影するときに音声を録音するために使います。</string>
 
+	<!-- ロック画面に「すれ違い通信 ON / 今日 N 人」を出すため(Live Activity).
+	     表示そのものはバックグラウンド実行を与えない. 狙いは
+	     「動いているのが見えていれば, アプリを強制終了されにくくなる」こと.
+	     Widget Extension が無い間は, 単に表示が出ないだけで害は無い. -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+
 	<!-- すれ違い通信. 近くの端末に自分の名刺を配り, 相手の名刺を読むために使う.
 	     位置情報は取得しない. -->
 	<key>NSBluetoothAlwaysUsageDescription</key>
