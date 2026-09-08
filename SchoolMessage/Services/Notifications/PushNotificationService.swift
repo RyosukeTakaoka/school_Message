@@ -80,8 +80,17 @@ final class PushNotificationService: NSObject {
         var subscriptionLookupError: String?
 
         /// 新着メッセージの購読がサーバ上に存在するか.
+        ///
+        /// グローバルな購読が使えない環境では会話ごとの購読に切り替わるので,
+        /// どちらの形でも「ある」と判定する.
         var hasMessageSubscription: Bool {
             serverSubscriptionIDs.contains(CKSchema.SubscriptionID.newMessages)
+                || serverSubscriptionIDs.contains(where: CKSchema.SubscriptionID.isPerConversation)
+        }
+
+        /// 会話ごとの購読で動いているか(診断の表示に使う).
+        var usesPerConversationSubscriptions: Bool {
+            serverSubscriptionIDs.contains(where: CKSchema.SubscriptionID.isPerConversation)
         }
 
         /// すべての段階を通過しているか.

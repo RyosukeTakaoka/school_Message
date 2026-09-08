@@ -560,54 +560,138 @@ actor CloudKitBackend: ChatBackend {
         eventHub.stream()
     }
 
+    /// プッシュ購読を用意する.
+    ///
+    /// ## 2 通りのやり方を順に試す理由
+    /// 本来は「自分が参加者に含まれるメッセージ」という 1 本の購読で済ませたい.
+    /// ところが CloudKit は, クエリでは使える述語でも購読では受け付けないことがあり,
+    /// 実際に `participantIDs CONTAINS <自分>` を使った購読が拒否されて
+    /// **購読が 1 つも作られていない**状態になっていた.
+    ///
+    /// 拒否されたかどうかは端末上でしか分からないので, グローバルな購読を試し,
+    /// 駄目なら会話ごとの購読(`conversation == <参照>` という最も単純な述語)に
+    /// 切り替える. どちらが成立したかは購読 ID から判別でき, プロフィール画面の
+    /// 診断に出る.
     func configureSubscriptions() async throws {
         let me = try await currentUserID()
 
-        // 自分が参加者に含まれる新着メッセージ.
+        do {
+            try await saveGlobalSubscriptions(me: me)
+            Log.push.info("using global subscriptions")
+            return
+        } catch {
+            Log.push.notice(
+                "global subscription rejected: \(CloudKitErrorMapping.appError(from: error).localizedDescription, privacy: .public)"
+            )
+        }
+
+        // グローバルが駄目だったので会話ごとに張り直す.
+        try await savePerConversationSubscriptions(me: me)
+        Log.push.info("using per-conversation subscriptions")
+    }
+
+    /// やり方 1: 参加者一覧で絞り込む購読を 1 組だけ作る.
+    private func saveGlobalSubscriptions(me: UserID) async throws {
         let messagePredicate = NSPredicate(
             format: "%K CONTAINS %@",
             CKSchema.Message.participantIDs,
             me.rawValue
         )
-        let messageSubscription = CKQuerySubscription(
+
+        // 表示用と, アプリを起こす用を分ける.
+        // 1 つの購読に「アラート」と「content-available」を同居させると
+        // 拒否されることがあるため, 最初から別々に作る.
+        let alert = CKQuerySubscription(
             recordType: CKSchema.Message.recordType,
             predicate: messagePredicate,
             subscriptionID: CKSchema.SubscriptionID.newMessages,
             options: [.firesOnRecordCreation]
         )
-        messageSubscription.notificationInfo = Self.messageNotificationInfo()
+        alert.notificationInfo = Self.messageAlertNotificationInfo()
 
-        // 自分が参加者に追加された会話(グループへの招待など).
-        let conversationPredicate = NSPredicate(
-            format: "%K CONTAINS %@",
-            CKSchema.Conversation.participantIDs,
-            me.rawValue
+        let silent = CKQuerySubscription(
+            recordType: CKSchema.Message.recordType,
+            predicate: messagePredicate,
+            subscriptionID: CKSchema.SubscriptionID.newMessagesSilent,
+            options: [.firesOnRecordCreation]
         )
-        let conversationSubscription = CKQuerySubscription(
+        silent.notificationInfo = Self.messageSilentNotificationInfo()
+
+        let conversations = CKQuerySubscription(
             recordType: CKSchema.Conversation.recordType,
-            predicate: conversationPredicate,
+            predicate: NSPredicate(
+                format: "%K CONTAINS %@",
+                CKSchema.Conversation.participantIDs,
+                me.rawValue
+            ),
             subscriptionID: CKSchema.SubscriptionID.conversations,
             options: [.firesOnRecordCreation, .firesOnRecordUpdate]
         )
-        let silentInfo = CKSubscription.NotificationInfo()
-        silentInfo.shouldSendContentAvailable = true
-        conversationSubscription.notificationInfo = silentInfo
+        conversations.notificationInfo = Self.messageSilentNotificationInfo()
+
+        // 1 つでも失敗したらこのやり方は使えないと判断する.
+        for subscription in [alert, silent, conversations] {
+            try await saveSubscription(subscription)
+        }
+    }
+
+    /// やり方 2: 参加している会話ごとに購読を作る.
+    ///
+    /// 述語が `conversation == <参照>` だけなので, 参照の一致しか使わない.
+    /// 自分の送信でも発火してしまうため, 通知は出さずアプリを起こすだけにして,
+    /// 「誰から来たか」の判定と通知の表示は端末側で行う
+    /// (`PushNotificationService.handleRemoteNotification`).
+    private func savePerConversationSubscriptions(me: UserID) async throws {
+        let records = try await queryWithRetry(
+            CKQuery(
+                recordType: CKSchema.Conversation.recordType,
+                predicate: NSPredicate(format: "%K CONTAINS %@", CKSchema.Conversation.participantIDs, me.rawValue)
+            ),
+            desiredKeys: [],
+            limit: Self.perConversationSubscriptionLimit
+        )
 
         var lastError: (any Error)?
-        for subscription in [messageSubscription, conversationSubscription] {
+        for record in records {
+            let conversationID = ConversationID(record.recordID.recordName)
+            let subscription = CKQuerySubscription(
+                recordType: CKSchema.Message.recordType,
+                predicate: NSPredicate(
+                    format: "%K == %@",
+                    CKSchema.Message.conversation,
+                    CKRecord.Reference(recordID: record.recordID, action: .none)
+                ),
+                subscriptionID: CKSchema.SubscriptionID.perConversation(conversationID),
+                options: [.firesOnRecordCreation]
+            )
+            subscription.notificationInfo = Self.messageSilentNotificationInfo()
+
             do {
-                _ = try await database.save(subscription)
-            } catch let error as CKError where error.code == .serverRejectedRequest {
-                // 同じ ID の購読が既にある. 冪等に扱う.
-                Log.push.debug("subscription already exists: \(subscription.subscriptionID, privacy: .public)")
+                try await saveSubscription(subscription)
             } catch {
-                // 購読を作れなくてもアプリは動く(定期ポーリングにフォールバックする).
-                Log.push.error("subscription failed: \(CloudKitErrorMapping.appError(from: error).localizedDescription, privacy: .public)")
                 lastError = error
             }
         }
+
         if let lastError {
             throw CloudKitErrorMapping.appError(from: lastError)
+        }
+    }
+
+    /// 購読を保存する.
+    ///
+    /// 同じ ID の購読を保存し直すと内容が置き換わるので, 冪等に呼んでよい.
+    /// **拒否(`serverRejectedRequest`)を「既にある」と誤認しない**ことが重要で,
+    /// 以前はここで握りつぶしていたために「購読が 1 つも無いのに設定は有効」と
+    /// 表示される状態になっていた.
+    private func saveSubscription(_ subscription: CKSubscription) async throws {
+        do {
+            _ = try await database.save(subscription)
+        } catch {
+            Log.push.error(
+                "subscription \(subscription.subscriptionID, privacy: .public) failed: \(CloudKitErrorMapping.appError(from: error).localizedDescription, privacy: .public)"
+            )
+            throw error
         }
     }
 
@@ -619,23 +703,31 @@ actor CloudKitBackend: ChatBackend {
         }
     }
 
-    /// プッシュに載せる情報.
+    /// 画面に出す通知の内容.
     ///
     /// 本文は暗号化されておりサーバでは復号できないため, サーバ生成の通知には
-    /// 送信者名だけを載せる. 本文入りの通知は, アプリが起動して復号できたときに
+    /// 送信者名だけを載せる. 本文入りの通知は, アプリが起きて復号できたときに
     /// ローカル通知として差し替える(`PushNotificationService`).
-    private static func messageNotificationInfo() -> CKSubscription.NotificationInfo {
+    ///
+    /// `shouldSendContentAvailable` はここでは付けない. アラートと同居させると
+    /// CloudKit に拒否されることがあるため, 起こす用は別の購読に分けている.
+    private static func messageAlertNotificationInfo() -> CKSubscription.NotificationInfo {
         let info = CKSubscription.NotificationInfo()
         info.titleLocalizationKey = "PUSH_NEW_MESSAGE_TITLE"
         info.alertLocalizationKey = "PUSH_NEW_MESSAGE_BODY"
         info.alertLocalizationArgs = [CKSchema.Message.senderDisplayName]
         info.shouldBadge = true
-        // アプリを起こして本文を復号し, より詳しい通知に差し替えるために使う.
-        info.shouldSendContentAvailable = true
         // alertLocalizationArgs で参照するフィールドは desiredKeys にも
-        // 含めないと, CloudKit がアラートの文言を組み立てられず通知自体が
-        // 届かない(senderDisplayName の指定漏れが原因で通知が来ていなかった).
+        // 含めないと, CloudKit がアラートの文言を組み立てられない.
         info.desiredKeys = [CKSchema.Message.conversation, CKSchema.Message.senderDisplayName]
+        return info
+    }
+
+    /// アプリを起こすだけの通知(画面には何も出さない).
+    private static func messageSilentNotificationInfo() -> CKSubscription.NotificationInfo {
+        let info = CKSubscription.NotificationInfo()
+        info.shouldSendContentAvailable = true
+        info.desiredKeys = [CKSchema.Message.conversation]
         return info
     }
 
@@ -648,23 +740,39 @@ actor CloudKitBackend: ChatBackend {
             return
         }
 
-        switch queryNotification.subscriptionID {
-        case CKSchema.SubscriptionID.newMessages:
-            // 参照フィールドは payload では recordName の文字列として届くが,
-            // 環境によっては CKRecord.Reference のまま渡ることがあるため両方受ける.
-            let raw = queryNotification.recordFields?[CKSchema.Message.conversation]
-            let conversationName = (raw as? String) ?? (raw as? CKRecord.Reference)?.recordID.recordName
-            if let conversationName {
-                eventHub.emit(.messagesChanged(ConversationID(conversationName)))
-            } else {
-                eventHub.emit(.conversationsChanged)
-            }
+        let subscriptionID = queryNotification.subscriptionID ?? ""
+
+        switch subscriptionID {
+        case CKSchema.SubscriptionID.newMessages,
+             CKSchema.SubscriptionID.newMessagesSilent:
+            emitMessagesChanged(from: queryNotification)
         case CKSchema.SubscriptionID.conversations:
             eventHub.emit(.conversationsChanged)
+        case let id where CKSchema.SubscriptionID.isPerConversation(id):
+            // 会話ごとの購読. 会話 ID は購読 ID からも分かるが,
+            // payload から取れるならそちらを優先する.
+            emitMessagesChanged(from: queryNotification)
         default:
             eventHub.emit(.conversationsChanged)
         }
     }
+
+    /// 通知の payload から会話を割り出してイベントを流す.
+    private func emitMessagesChanged(from notification: CKQueryNotification) {
+        // 参照フィールドは payload では recordName の文字列として届くが,
+        // 環境によっては CKRecord.Reference のまま渡ることがあるため両方受ける.
+        let raw = notification.recordFields?[CKSchema.Message.conversation]
+        let conversationName = (raw as? String) ?? (raw as? CKRecord.Reference)?.recordID.recordName
+        if let conversationName {
+            eventHub.emit(.messagesChanged(ConversationID(conversationName)))
+        } else {
+            // 会話が分からなくても, 一覧を取り直せば新着には気付ける.
+            eventHub.emit(.conversationsChanged)
+        }
+    }
+
+    /// 会話ごとの購読を作る上限. これを超える会話がある利用者は想定していない.
+    private static let perConversationSubscriptionLimit = 200
 
     // MARK: - 内部キャッシュ
 

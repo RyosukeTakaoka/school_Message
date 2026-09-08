@@ -246,6 +246,9 @@ struct ProfileView: View {
             return String(localized: "確認できませんでした: \(error)")
         }
         if diagnostics.hasMessageSubscription {
+            if diagnostics.usesPerConversationSubscriptions {
+                return String(localized: "会話ごとの購読で動いています(全 \(diagnostics.serverSubscriptionIDs.count) 件)")
+            }
             return String(localized: "新着メッセージの購読があります(全 \(diagnostics.serverSubscriptionIDs.count) 件)")
         }
         return String(localized: "新着メッセージの購読がサーバにありません。下のボタンで作り直してください")

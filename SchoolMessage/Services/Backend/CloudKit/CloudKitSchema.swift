@@ -173,9 +173,21 @@ enum CKSchema {
     // MARK: - Subscription
 
     enum SubscriptionID {
-        /// 自分が参加している会話への新着メッセージ.
-        static let newMessages = "sub-new-messages-v1"
+        /// 自分が参加している会話への新着メッセージ(通知を表示する用).
+        static let newMessages = "sub-new-messages-v2"
+        /// 同上(アプリを起こして本文を復号する用のサイレント通知).
+        static let newMessagesSilent = "sub-new-messages-silent-v2"
         /// 自分が参加者に追加された会話.
-        static let conversations = "sub-conversations-v1"
+        static let conversations = "sub-conversations-v2"
+
+        /// 会話ごとの購読(グローバルな述語が使えない環境向けの代替).
+        static func perConversation(_ conversationID: ConversationID) -> String {
+            "sub-conv-\(conversationID.rawValue)"
+        }
+
+        /// 会話ごとの購読か.
+        static func isPerConversation(_ subscriptionID: String) -> Bool {
+            subscriptionID.hasPrefix("sub-conv-")
+        }
     }
 }

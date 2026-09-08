@@ -198,6 +198,16 @@ final class ChatStore {
     ///
     /// 失敗してもアプリは動く(定期ポーリングで新着に気付く)が, 通知は届かなく
     /// なるため, 結果を状態として残してプロフィール画面から確認できるようにする.
+    /// 新しい会話ができたときに購読を張り直す.
+    ///
+    /// 会話ごとの購読で動いている場合, 新しい会話の分は作られていないため
+    /// そのままでは通知が来ない. グローバルな購読で動いている場合は
+    /// 何も変わらないので, どちらでも安全に呼べる.
+    private func resubscribeForNewConversation() async {
+        guard pushSubscriptionStatus == .active else { return }
+        try? await backend.configureSubscriptions()
+    }
+
     func configurePushSubscriptions() async {
         pushSubscriptionStatus = .configuring
         do {
@@ -469,6 +479,7 @@ final class ChatStore {
             upsert(conversation)
             selectedConversationID = conversation.id
             await refreshMessages(in: conversation.id)
+            await resubscribeForNewConversation()
             return conversation.id
         } catch {
             banner = AppError.wrap(error)
@@ -486,6 +497,7 @@ final class ChatStore {
             upsert(conversation)
             selectedConversationID = conversation.id
             await refreshConversations()
+            await resubscribeForNewConversation()
             return conversation.id
         } catch {
             banner = AppError.wrap(error)
