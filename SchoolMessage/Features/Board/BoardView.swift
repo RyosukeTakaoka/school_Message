@@ -57,7 +57,7 @@ struct BoardView: View {
                 }
             }
             .refreshable { await load() }
-            .task { await load() }
+            .task { await loadAndPoll() }
             .sheet(isPresented: $isComposingThread) {
                 NewThreadView { title, body in
                     await create(title: title, body: body)
@@ -96,6 +96,19 @@ struct BoardView: View {
             threads = try await environment.backend.fetchBoardThreads()
         } catch {
             store.setBanner(AppError.wrap(error))
+        }
+    }
+
+    /// 掲示板には Push 通知が無いので, 開いている間は
+    /// チャットの購読失敗時フォールバックと同じ間隔でポーリングする.
+    /// `.task` は画面が消えると自動でキャンセルされるので, ここで
+    /// タイマーを片付ける必要はない.
+    private func loadAndPoll() async {
+        await load()
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(AppConstants.Timing.fallbackPollInterval))
+            guard !Task.isCancelled else { return }
+            await load()
         }
     }
 
