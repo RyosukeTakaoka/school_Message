@@ -726,6 +726,7 @@ extension CloudKitBackend {
             recordID: CKRecord.ID(recordName: outgoing.id.rawValue)
         )
         record[CKSchema.Message.conversation] = reference(to: outgoing.conversationID)
+        record[CKSchema.Message.conversationKey] = outgoing.conversationID.rawValue as CKRecordValue
         record[CKSchema.Message.senderID] = me.rawValue as CKRecordValue
         record[CKSchema.Message.sentAt] = outgoing.createdAt as CKRecordValue
         record[CKSchema.Message.participantIDs] = participants.map(\.rawValue) as CKRecordValue

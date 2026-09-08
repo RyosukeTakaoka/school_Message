@@ -147,6 +147,18 @@ enum CKSchema {
         /// 会話レコード側で既に参加者は判明するので, 新たに漏れる情報はない.
         static let participantIDs = "participantIDs"
 
+        /// 会話 ID を文字列として複製したもの. QUERYABLE.
+        ///
+        /// 会話ごとの購読(`savePerConversationSubscriptions`)は, 本来
+        /// `conversation`(CKRecord.Reference)への等号で絞り込めば足りる.
+        /// しかし Production 環境では Reference の等号や List の CONTAINS を
+        /// 述語に持つ CKQuerySubscription の作成が
+        /// `attempting to create a subscription in a production container`
+        /// で一律に失敗する既知の挙動があり(Apple 側, 2020 年頃から報告あり),
+        /// 単純な String の等号だけがこの問題を避けられる.
+        /// そのためだけに, 参照とは別に文字列としても持たせている.
+        static let conversationKey = "conversationKey"
+
         /// 送信者の表示名(平文).
         ///
         /// プッシュ通知に「誰から来たか」を出すためだけに置く. 本文は暗号化された

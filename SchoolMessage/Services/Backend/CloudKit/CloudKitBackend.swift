@@ -637,7 +637,14 @@ actor CloudKitBackend: ChatBackend {
 
     /// やり方 2: 参加している会話ごとに購読を作る.
     ///
-    /// 述語が `conversation == <参照>` だけなので, 参照の一致しか使わない.
+    /// 述語は `conversationKey == "<文字列>"` という単純な String の等号だけを使う.
+    /// **`conversation`(CKRecord.Reference)への等号は使わない.**
+    /// Production 環境では, Reference の等号や List の CONTAINS を述語に持つ
+    /// CKQuerySubscription の作成が
+    /// `attempting to create a subscription in a production container` で
+    /// 一律に失敗する既知の問題があり, 単純な String の等号だけがこれを避けられる
+    /// (同じ現象を辿った参考実装 EventSnap2 でも, 購読はすべて String の等号).
+    ///
     /// 自分の送信でも発火してしまうため, 通知は出さずアプリを起こすだけにして,
     /// 「誰から来たか」の判定と通知の表示は端末側で行う
     /// (`PushNotificationService.handleRemoteNotification`).
@@ -672,8 +679,8 @@ actor CloudKitBackend: ChatBackend {
                 recordType: CKSchema.Message.recordType,
                 predicate: NSPredicate(
                     format: "%K == %@",
-                    CKSchema.Message.conversation,
-                    CKRecord.Reference(recordID: record.recordID, action: .none)
+                    CKSchema.Message.conversationKey,
+                    conversationID.rawValue
                 ),
                 subscriptionID: CKSchema.SubscriptionID.perConversation(conversationID),
                 options: [.firesOnRecordCreation]

@@ -127,6 +127,7 @@ CloudKit Console: https://icloud.developer.apple.com/dashboard/
 | フィールド | 型 |
 |---|---|
 | `conversation` | Reference |
+| `conversationKey` | String（`conversation` と同じ会話 ID を文字列として複製したもの。理由は下記「購読の作成自体が Production で一律に失敗する場合」を参照）|
 | `senderID` | String |
 | `sentAt` | Date/Time |
 | `payload` | Bytes |
@@ -156,6 +157,7 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 |---|---|---|---|
 | **Message** | `participantIDs` | **QUERYABLE** | プッシュ購読を作れず、通知が一切来ない |
 | Message | `conversation` | QUERYABLE | メッセージを読めない |
+| **Message** | `conversationKey` | **QUERYABLE** | 会話ごとの購読(フォールバック)が作れない。詳細は下記 |
 | Message | `sentAt` | QUERYABLE, **SORTABLE** | 並び替え・ページングができない |
 | Conversation | `participantIDs` | QUERYABLE | チャット一覧が空になる |
 | ConversationKey | `conversation` | QUERYABLE | 「鍵を取得できませんでした」 |
@@ -174,7 +176,8 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 >
 > ただし 2026-09-08 時点の本プロジェクトでは、**この索引は Development にも
 > Production にも既に存在することを確認済み**です。したがって通知が来ない
-> 原因は別にあります（→ 付録「それでも通知が来ないとき」）。
+> 原因は別にあります（→ 付録「購読の作成自体が Production で一律に失敗する
+> 場合」）。
 
 なお、レコードタイプによっては CloudKit が `recordName` などのシステム
 インデックスを自動で付けます。上の表に無いものは触らなくて構いません。
@@ -233,6 +236,59 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 | 「2. 端末の登録」が × | **下記「Xcode 側の確認」へ。** 通信できる状態で開き直しても直らない場合、capability の設定漏れが濃厚です。実機かどうかも確認（シミュレータでは APNs に登録できません） |
 | 「3. サーバの購読」が × | 本文書の手順 3（インデックス）と 4（デプロイ）を実施。そのうえで「購読をもう一度設定する」を押す |
 | **すべて ✅ なのに来ない** | **下記「Xcode 側の確認」へ。** 購読も端末登録もできているのに届かない場合、APNs の環境（sandbox / production）の食い違いが最有力です |
+
+### 購読の作成自体が Production で一律に失敗する場合（今回の実際の原因）
+
+**2026-09-08 の調査で、実際のエラー文が特定できた。**
+
+Console.app のログに、グローバル購読・会話ごとの購読の**両方**が, 同じ文言で
+一律に失敗していた.
+
+```
+subscription sub-new-messages-v2 failed:
+Error saving record subscription with id sub-new-messages-v2 to server:
+attempting to create a subscription in a production container
+```
+
+CKError code 12 (invalidArguments). この文言のまま, Apple Developer Forums に
+2020年ごろから繰り返し報告されている, **Public Database の Production 環境で
+CKQuerySubscription の作成が失敗する既知の問題**と一致する.
+
+**同じ開発者の別アプリ（EventSnap2, 同じく CloudKit + Public Database）で
+比較したところ, はっきりした違いが見つかった.**
+
+| | 述語の形 | Production での購読作成 |
+|---|---|---|
+| School Message（旧） | `conversation == <Reference>` / `participantIDs CONTAINS <String>` | ✗ 失敗 |
+| EventSnap2 | `eventID == "<文字列>"`（Reference も List も使わない, 単純な String の等号のみ） | ○ 成功（実機で確認済み） |
+
+**Reference フィールドへの等号や, List フィールドへの CONTAINS を述語に持つ
+購読は, Production で作成できないことがある.** 単純な String フィールドへの
+等号だけが確実に動く, というのが今回の比較から得られた結論.
+
+**対処（コード側は対応済み. 残っているのは CloudKit 側の 1 フィールド追加だけ）**
+
+`Message` レコードに, 会話 ID を **String としてもう一度複製した**
+`conversationKey` フィールドを追加した. 会話ごとの購読は, これまでの
+`conversation == <Reference>` ではなく `conversationKey == "<文字列>"` で
+絞り込むようにコードを直してある(`git pull` すれば入っている).
+
+必要な作業は次の 1 点だけ.
+
+1. Development で **Schema → Record Types → Message** を開き,
+   フィールド `conversationKey` を **String** で追加する
+2. **Schema → Indexes** で `Message.conversationKey` に **Queryable** を付ける
+3. **Deploy Schema Changes…** で Production へ反映する
+4. Xcode で Archive → TestFlight に上げ直す（コードの変更を反映するため）
+5. TestFlight 版で「もう一度設定する」を押し, 「3. サーバの購読」が ✅ になるか確認する
+
+**グローバル購読(`participantIDs CONTAINS`)は, この対処の対象外.**
+「相手が誰であれ全員に一斉通知」という性質上, 単純な String の等号には
+置き換えられない. 引き続き Production では失敗する見込みだが, アプリは
+自動で会話ごとの購読にフォールバックするので, 上記の 1 点さえ直っていれば
+実害はない.
+
+---
 
 ### iPadOS の版を確認する（Development では届くのに Production だけ届かない場合）
 

@@ -44,6 +44,13 @@ git pull origin claude/ipad-school-chat-app-q1ce5n
 **掲示板を使うために必要。** これをやらないと掲示板だけ動きません
 （チャット・通知・ゲーム・すれ違い通信には影響しません）。
 
+> **今日すでに一度この手順をやった場合も、もう一度やり直してください。**
+> `docs/cloudkit-schema.ckdb` に `Message.conversationKey` フィールドが
+> 追加されました（通知が来ない問題の実際の原因への対処。詳細は
+> `docs/CLOUDKIT_MANUAL_SETUP.md`「購読の作成自体が Production で
+> 一律に失敗する場合」）。Import → Deploy をやり直さないと、この
+> フィールドが Production に反映されません。
+
 ### 2-1. Development に取り込む
 
 1. https://icloud.developer.apple.com/dashboard/ を開く
@@ -72,8 +79,8 @@ git pull origin claude/ipad-school-chat-app-q1ce5n
 
 1. 右上の環境を **Production** に切り替える
 2. **Schema → Record Types** に `BoardThread` / `BoardPost` があるか
-3. **Schema → Indexes** で `Message` に `participantIDs`（QUERYABLE）と
-   `conversation`（QUERYABLE）があるか
+3. **Schema → Indexes** で `Message` に `participantIDs`・`conversation`・
+   **`conversationKey`**（すべて QUERYABLE）があるか
 
 ---
 
@@ -314,6 +321,7 @@ TestFlight 版は **Production** の CloudKit を使います。
 |---|---|
 | 通知が来ない | 手順 3（capability）→ 手順 5（診断）→ `docs/CLOUDKIT_MANUAL_SETUP.md` |
 | Development では届くが TestFlight では届かない | **まず 2 台の iPadOS の版を確認**。26.4 ちょうどなら既知の OS 不具合。26.4.1 以降に更新する（`docs/CLOUDKIT_MANUAL_SETUP.md`）|
+| Console.app に `attempting to create a subscription in a production container` | **これが実際の原因だった。** `docs/CLOUDKIT_MANUAL_SETUP.md`「購読の作成自体が Production で一律に失敗する場合」を見て、`Message.conversationKey` を追加・Deploy する |
 | 掲示板が動かない | 手順 2（Deploy し忘れ） |
 | すれ違わない | `docs/STREETPASS.md` の「7. うまくいかないときの確認順」 |
 | ビルドエラー | エラー文をそのまま貼ってください |
