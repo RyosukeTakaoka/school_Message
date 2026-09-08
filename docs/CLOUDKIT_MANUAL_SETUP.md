@@ -130,7 +130,7 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 
 | レコードタイプ | フィールド | 必要なインデックス | これが無いと |
 |---|---|---|---|
-| **Message** | `participantIDs` | **QUERYABLE** | **プッシュ購読を作れず、通知が一切来ない** |
+| **Message** | `participantIDs` | **QUERYABLE** | プッシュ購読を作れず、通知が一切来ない |
 | Message | `conversation` | QUERYABLE | メッセージを読めない |
 | Message | `sentAt` | QUERYABLE, **SORTABLE** | 並び替え・ページングができない |
 | Conversation | `participantIDs` | QUERYABLE | チャット一覧が空になる |
@@ -142,12 +142,15 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 | UserProfile | `displayName` | QUERYABLE | 名前での検索ができない（任意） |
 | Friendship | `ownerID` | QUERYABLE | 友達一覧が空になる |
 
-> **`Message.participantIDs` の QUERYABLE を最優先で確認してください。**
+> **`Message.participantIDs` の QUERYABLE について**
 > アプリは「自分が参加者に含まれる新着メッセージ」という条件でプッシュ購読を
 > 作ります。この条件は `participantIDs` を検索できることが前提なので、
-> インデックスが無いと購読の作成そのものが失敗します。
-> このとき**メッセージの送受信は正常に動いたまま、通知だけが来ない**状態になり、
-> 原因に気付きにくくなります。
+> インデックスが無いと購読の作成そのものが失敗します。このとき
+> **メッセージの送受信は正常に動いたまま、通知だけが来ない**状態になります。
+>
+> ただし 2026-09-08 時点の本プロジェクトでは、**この索引は Development にも
+> Production にも既に存在することを確認済み**です。したがって通知が来ない
+> 原因は別にあります（→ 付録「それでも通知が来ないとき」）。
 
 なお、レコードタイプによっては CloudKit が `recordName` などのシステム
 インデックスを自動で付けます。上の表に無いものは触らなくて構いません。
@@ -178,11 +181,42 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 
 ## 付録：それでも通知が来ないとき
 
-プロフィール画面の「通知の状態を調べる」の結果ごとに、見るべき場所が変わります。
+### まず切り分ける
+
+プロフィール画面の **「通知の状態を調べる」** を実行してください。
+結果ごとに、見るべき場所が変わります。
 
 | 結果 | 原因と対処 |
 |---|---|
 | 「1. 通知の許可」が × | iPad の「設定」→「通知」→ SchoolMessage で許可する。一度拒否すると、アプリ側からは二度と聞けません |
-| 「2. 端末の登録」が × | 通信できる状態でアプリを開き直す。実機かどうかも確認（シミュレータでは APNs に登録できません） |
+| 「2. 端末の登録」が × | **下記「Xcode 側の確認」へ。** 通信できる状態で開き直しても直らない場合、capability の設定漏れが濃厚です。実機かどうかも確認（シミュレータでは APNs に登録できません） |
 | 「3. サーバの購読」が × | 本文書の手順 3（インデックス）と 4（デプロイ）を実施。そのうえで「購読をもう一度設定する」を押す |
-| すべて ✅ なのに来ない | 送信側と受信側が**別々の Apple ID** か確認（同じ Apple ID の 2 台では、自分の送信に自分への通知は飛びません）。iPad の「おやすみモード」「集中モード」も確認 |
+| **すべて ✅ なのに来ない** | **下記「Xcode 側の確認」へ。** 購読も端末登録もできているのに届かない場合、APNs の環境（sandbox / production）の食い違いが最有力です |
+
+### Xcode 側の確認（購読が ✅ でも通知が来ない場合）
+
+`Config/SchoolMessage.entitlements` には `aps-environment = development` と
+書いてあります。Xcode の**自動署名がこの値を配布ビルド用に書き換えてくれる**のは、
+**Push Notifications capability が Xcode の画面上で有効になっている場合だけ**です。
+
+この capability が付いていないと、TestFlight 版でも `development`（sandbox）の
+まま署名され、**Production の CloudKit から送られるプッシュが一切届きません**。
+このとき、メッセージの送受信・既読はすべて正常に動いたままなので、
+「アプリは動くのに通知だけ来ない」という症状になります。
+
+**確認手順**
+
+1. Xcode でプロジェクトを開く
+2. 左のファイル一覧で **SchoolMessage**（青いアイコン）を選ぶ
+3. **TARGETS → SchoolMessage → Signing & Capabilities** タブを開く
+4. 一覧に次の 2 つがあるか確認する
+   - **Push Notifications**
+   - **Background Modes**（中の「Remote notifications」にチェック）
+   - **iCloud**（CloudKit にチェック、コンテナが `iCloud.com.schoolmessage.app`）
+5. 足りないものがあれば、左上の **「+ Capability」** から追加する
+6. 追加後、**Archive し直して TestFlight に上げ直す**
+
+> 5 で Push Notifications を追加すると、Xcode が Apple Developer 側の
+> App ID にも自動で capability を登録します。追加した直後は
+> 「Provisioning profile が更新されました」という表示が出ることがありますが、
+> そのまま進めて構いません。
