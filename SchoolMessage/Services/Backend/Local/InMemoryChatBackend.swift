@@ -19,6 +19,8 @@ actor InMemoryChatBackend: ChatBackend {
     private var readStates: [ConversationID: Date] = [:]
     /// 会話 → (参加者 → 既読位置). デモでも「既読」表示を確認できるようにする.
     private var readReceipts: [ConversationID: [UserID: Date]] = [:]
+    private var boardThreads: [BoardThread] = []
+    private var boardPosts: [BoardPost] = []
 
     init(seeded: Bool = true) {
         let owner = UserProfile(
@@ -77,6 +79,18 @@ actor InMemoryChatBackend: ChatBackend {
         ]
         messages[group.id] = [
             Message(conversationID: group.id, senderID: yamada.id, content: .text("明日の体育祭どうする？"), createdAt: .now.addingTimeInterval(-300))
+        ]
+
+        let thread = BoardThread(
+            title: "今日の給食",
+            authorID: yamada.id,
+            createdAt: .now.addingTimeInterval(-3600),
+            lastPostedAt: .now.addingTimeInterval(-1200)
+        )
+        boardThreads = [thread]
+        boardPosts = [
+            BoardPost(threadID: thread.id, authorID: yamada.id, body: "揚げパンだった", createdAt: .now.addingTimeInterval(-3600)),
+            BoardPost(threadID: thread.id, authorID: sato.id, body: "おかわりしたかった", createdAt: .now.addingTimeInterval(-1200))
         ]
 
         // 自分が送った「食堂！」には既読が付いている状態にしておく.
@@ -269,6 +283,54 @@ actor InMemoryChatBackend: ChatBackend {
 
     func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date] {
         readReceipts[conversationID] ?? [:]
+    }
+
+    // MARK: - 掲示板
+
+    func fetchBoardThreads() async throws -> [BoardThread] {
+        boardThreads
+            .map { thread in
+                var copy = thread
+                copy.postCount = boardPosts.filter { $0.threadID == thread.id }.count
+                return copy
+            }
+            .sorted { $0.lastPostedAt > $1.lastPostedAt }
+    }
+
+    func createBoardThread(title: String, body: String) async throws -> BoardThread {
+        let thread = BoardThread(
+            title: try BoardThread.validateTitle(title),
+            authorID: me.id,
+            postCount: 1
+        )
+        boardThreads.append(thread)
+        _ = try await createBoardPost(in: thread.id, body: body)
+        return thread
+    }
+
+    func fetchBoardPosts(in threadID: ThreadID) async throws -> [BoardPost] {
+        boardPosts
+            .filter { $0.threadID == threadID }
+            .sorted { $0.createdAt < $1.createdAt }
+            .enumerated()
+            .map { index, post in
+                var numbered = post
+                numbered.number = index + 1
+                return numbered
+            }
+    }
+
+    func createBoardPost(in threadID: ThreadID, body: String) async throws -> BoardPost {
+        let post = BoardPost(
+            threadID: threadID,
+            authorID: me.id,
+            body: try BoardPost.validateBody(body)
+        )
+        boardPosts.append(post)
+        if let index = boardThreads.firstIndex(where: { $0.id == threadID }) {
+            boardThreads[index].lastPostedAt = post.createdAt
+        }
+        return post
     }
 
     // MARK: - メディア

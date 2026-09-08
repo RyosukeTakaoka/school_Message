@@ -1,5 +1,37 @@
 DEFINE SCHEMA
 
+    RECORD TYPE BoardPost (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        authorID        STRING QUERYABLE SEARCHABLE SORTABLE,
+        body            STRING,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        thread          REFERENCE QUERYABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE BoardThread (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        authorID        STRING QUERYABLE SEARCHABLE SORTABLE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        lastPostedAt    TIMESTAMP QUERYABLE SORTABLE,
+        title           STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE Conversation (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

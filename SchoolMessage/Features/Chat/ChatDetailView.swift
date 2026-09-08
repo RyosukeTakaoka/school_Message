@@ -15,11 +15,30 @@ struct ChatDetailView: View {
     @State private var highlightedMessageID: MessageID?
     /// 送信取り消しの確認中のメッセージ.
     @State private var unsendCandidate: Message?
+    /// オセロの盤面を開いているか.
+    @State private var isShowingGame = false
 
     private var store: ChatStore { environment.store }
 
+    /// 画面に出すメッセージ.
+    ///
+    /// 対戦は 1 手ごとにメッセージを送るので, そのまま並べると盤面のカードが
+    /// 手数ぶん積み上がってしまう. 同じ対戦のカードは**最後の 1 枚だけ**残し,
+    /// 途中の手は隠す(チャットの流れを埋めないため).
     private var messages: [Message] {
-        store.messagesByConversation[conversation.id] ?? []
+        let all = store.messagesByConversation[conversation.id] ?? []
+
+        var latestGameMessageID: [String: MessageID] = [:]
+        for message in all {
+            if let game = message.content.game {
+                latestGameMessageID[game.gameID] = message.id
+            }
+        }
+
+        return all.filter { message in
+            guard let game = message.content.game else { return true }
+            return latestGameMessageID[game.gameID] == message.id
+        }
     }
 
     var body: some View {
@@ -34,11 +53,12 @@ struct ChatDetailView: View {
                         switch row.kind {
                         case .daySeparator(let date):
                             daySeparator(date)
-                        case .message(let message, let grouped):
+                        case .message(let message, let grouped, let showsTimestamp):
                             MessageBubbleView(
                                 message: message,
                                 conversation: conversation,
                                 isGroupedWithPrevious: grouped,
+                                showsTimestamp: showsTimestamp,
                                 onTapMedia: { viewingMedia = $0 },
                                 onRetry: {
                                     Task { await store.retrySending(message.id, in: conversation.id) }
@@ -50,7 +70,8 @@ struct ChatDetailView: View {
                                 onTapQuote: { original in
                                     scrollToOriginal(original, using: proxy)
                                 },
-                                onUnsend: { unsendCandidate = message }
+                                onUnsend: { unsendCandidate = message },
+                                onOpenGame: { isShowingGame = true }
                             )
                             .id(message.id)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -99,6 +120,16 @@ struct ChatDetailView: View {
             ToolbarItem(placement: .principal) {
                 header
             }
+            // オセロは 1 対 1 のチャットに付随する遊びなので, グループには出さない.
+            if conversation.kind == .direct {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isShowingGame = true
+                    } label: {
+                        Label(String(localized: "オセロ"), systemImage: "circle.righthalf.filled")
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isShowingInfo = true
@@ -109,6 +140,9 @@ struct ChatDetailView: View {
         }
         .sheet(isPresented: $isShowingInfo) {
             ConversationInfoView(conversation: conversation)
+        }
+        .sheet(isPresented: $isShowingGame) {
+            OthelloGameView(conversationID: conversation.id)
         }
         .fullScreenCover(item: $viewingMedia) { attachment in
             MediaViewerScreen(attachment: attachment, conversationID: conversation.id)
@@ -223,14 +257,15 @@ struct ChatDetailView: View {
 
     private static let bottomAnchor = "bottom-anchor"
 
-    /// 日付区切りと「連続発言かどうか」を前計算する.
+    /// 日付区切り・「連続発言かどうか」・「時刻を出すか」を前計算する.
     /// View の body で毎回条件分岐を書くより, データにしてしまうほうが読みやすい.
     private var rows: [ChatRow] {
         var result: [ChatRow] = []
         var previous: Message?
         let calendar = Calendar.current
+        let visible = messages
 
-        for message in messages {
+        for (index, message) in visible.enumerated() {
             if previous == nil || !calendar.isDate(message.createdAt, inSameDayAs: previous?.createdAt ?? .distantPast) {
                 result.append(ChatRow(id: "day-\(message.id.rawValue)", kind: .daySeparator(message.createdAt)))
             }
@@ -243,10 +278,36 @@ struct ChatDetailView: View {
             } else {
                 grouped = false
             }
-            result.append(ChatRow(id: message.id.rawValue, kind: .message(message, grouped: grouped)))
+            result.append(
+                ChatRow(
+                    id: message.id.rawValue,
+                    kind: .message(
+                        message,
+                        grouped: grouped,
+                        showsTimestamp: showsTimestamp(at: index, in: visible, calendar: calendar)
+                    )
+                )
+            )
             previous = message
         }
         return result
+    }
+
+    /// 同じ分に連続して送られたメッセージは, 最後の 1 件にだけ時刻を出す.
+    ///
+    /// 3 通続けて送ると時刻が 3 つ並んで読みにくいため, まとまりの末尾だけに
+    /// 集約する. 送信者が変わる場合は, 左右に分かれて別のまとまりに見えるので
+    /// そこでも区切る.
+    private func showsTimestamp(at index: Int, in messages: [Message], calendar: Calendar) -> Bool {
+        let message = messages[index]
+        // 送信中・失敗はそれ自体が状態表示なので, 常に出す.
+        guard message.deliveryState == .sent else { return true }
+        guard index + 1 < messages.count else { return true }
+
+        let next = messages[index + 1]
+        guard next.deliveryState == .sent else { return true }
+        guard next.senderID == message.senderID else { return true }
+        return !calendar.isDate(next.createdAt, equalTo: message.createdAt, toGranularity: .minute)
     }
 
     /// この時間内に続く同じ人の発言は 1 つのまとまりとして表示する.
@@ -257,7 +318,7 @@ struct ChatDetailView: View {
 private struct ChatRow: Identifiable {
     enum Kind {
         case daySeparator(Date)
-        case message(Message, grouped: Bool)
+        case message(Message, grouped: Bool, showsTimestamp: Bool)
     }
     let id: String
     let kind: Kind

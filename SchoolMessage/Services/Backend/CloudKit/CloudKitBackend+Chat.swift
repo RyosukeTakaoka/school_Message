@@ -635,6 +635,18 @@ extension CloudKitBackend {
         }
 
         let content: MessageContent
+        if let game = payload.game {
+            return Message(
+                id: raw.id,
+                conversationID: raw.conversationID,
+                senderID: raw.senderID,
+                content: .game(game),
+                createdAt: raw.sentAt,
+                deliveryState: .sent,
+                modifiedAt: raw.modifiedAt,
+                isRead: true
+            )
+        }
         if let media = payload.media {
             let attachment = MediaAttachment(
                 id: media.attachmentID,
@@ -672,6 +684,9 @@ extension CloudKitBackend {
         if payload.isUnsent == true {
             return String(localized: "送信を取り消しました")
         }
+        if let game = payload.game {
+            return game.previewText
+        }
         if let media = payload.media {
             return media.kind == .image ? String(localized: "写真") : String(localized: "動画")
         }
@@ -702,6 +717,8 @@ extension CloudKitBackend {
             )
         case .media(let media):
             payload = MessagePayload(media: media.metadata, replyTo: outgoing.replyTo)
+        case .game(let snapshot):
+            payload = MessagePayload(game: snapshot)
         }
 
         let record = CKRecord(

@@ -12,6 +12,7 @@ struct ChatListView: View {
 
     var onShowFriends: () -> Void
     var onCreateGroup: () -> Void
+    var onShowBoard: () -> Void
     var onShowProfile: () -> Void
 
     private var store: ChatStore { environment.store }
@@ -58,6 +59,9 @@ struct ChatListView: View {
                 }
                 Button(action: onCreateGroup) {
                     Label(String(localized: "グループを作成"), systemImage: "person.3.sequence")
+                }
+                Button(action: onShowBoard) {
+                    Label(String(localized: "掲示板"), systemImage: "text.bubble")
                 }
             }
             ToolbarItem(placement: .topBarLeading) {
@@ -187,6 +191,7 @@ struct ChatListRow: View {
             selection: .constant(nil),
             onShowFriends: {},
             onCreateGroup: {},
+            onShowBoard: {},
             onShowProfile: {}
         )
     }

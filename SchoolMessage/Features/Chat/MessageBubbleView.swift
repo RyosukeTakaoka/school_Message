@@ -12,6 +12,11 @@ struct MessageBubbleView: View {
     let conversation: Conversation
     /// 直前のメッセージと同じ送信者か(名前とアバターの重複表示を避ける).
     let isGroupedWithPrevious: Bool
+    /// 時刻と既読を出すか.
+    ///
+    /// 同じ分に続けて送られたメッセージでは, まとまりの末尾だけ `true` になる.
+    /// 3 通送るたびに時刻が 3 つ並ぶのを避けるため.
+    var showsTimestamp: Bool = true
     var onTapMedia: (MediaAttachment) -> Void
     var onRetry: () -> Void
     var onCancel: () -> Void
@@ -21,6 +26,8 @@ struct MessageBubbleView: View {
     var onTapQuote: (MessageID) -> Void = { _ in }
     /// 「送信を取り消す」を選んだ. 確認は呼び出し側で取る.
     var onUnsend: () -> Void = {}
+    /// 対戦のカードをタップした.
+    var onOpenGame: () -> Void = {}
 
     private var store: ChatStore { environment.store }
     private var isOutgoing: Bool { message.senderID == store.currentUserID }
@@ -112,8 +119,8 @@ struct MessageBubbleView: View {
     /// 元が送信中でも表示は崩れず, 送信キューは投入順に送るため順序も保たれる.
     @ViewBuilder
     private var replyMenu: some View {
-        // 取り消し済みには何も操作させない.
-        if !message.isUnsent {
+        // 取り消し済みと対戦のカードには何も操作させない.
+        if !message.isUnsent, message.content.game == nil {
             Button {
                 onReply()
             } label: {
@@ -183,7 +190,54 @@ struct MessageBubbleView: View {
 
         case .video(let attachment):
             mediaBubble(attachment, showsPlayBadge: true)
+
+        case .game(let snapshot):
+            gameBubble(snapshot)
         }
+    }
+
+    /// 対戦の状況を出すカード. タップで盤面を開く.
+    private func gameBubble(_ snapshot: GameSnapshot) -> some View {
+        Button {
+            onOpenGame()
+        } label: {
+            HStack(spacing: AppConstants.Layout.standardSpacing) {
+                Image(systemName: "circle.righthalf.filled")
+                    .font(.title2)
+                    .foregroundStyle(Color.accentColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("オセロ")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    Text(gameStatusText(snapshot))
+                        .font(.caption)
+                        .foregroundStyle(Palette.subdued)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.subdued)
+            }
+            .padding(AppConstants.Layout.standardSpacing)
+            .frame(maxWidth: 300, alignment: .leading)
+            .background(
+                Palette.incomingBubble,
+                in: RoundedRectangle(cornerRadius: AppConstants.Layout.bubbleCornerRadius, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func gameStatusText(_ snapshot: GameSnapshot) -> String {
+        guard let board = snapshot.othelloBoard else { return String(localized: "対戦中") }
+        let score = String(localized: "黒 \(board.count(of: .black)) - 白 \(board.count(of: .white))")
+        if snapshot.isFinished {
+            return String(localized: "対戦終了 · \(score)")
+        }
+        if let me = store.currentUserID, snapshot.isTurn(of: me) {
+            return String(localized: "あなたの番 · \(score)")
+        }
+        return String(localized: "相手の番 · \(score)")
     }
 
     private func mediaBubble(_ attachment: MediaAttachment, showsPlayBadge: Bool) -> some View {
@@ -266,17 +320,19 @@ struct MessageBubbleView: View {
     private var footer: some View {
         switch message.deliveryState {
         case .sent:
-            HStack(spacing: 4) {
-                if let readLabel {
-                    Text(readLabel)
+            if showsTimestamp {
+                HStack(spacing: 4) {
+                    if let readLabel {
+                        Text(readLabel)
+                            .font(.caption2)
+                            .foregroundStyle(Palette.subdued)
+                    }
+                    Text(DateDisplay.messageTimestamp(message.createdAt))
                         .font(.caption2)
                         .foregroundStyle(Palette.subdued)
                 }
-                Text(DateDisplay.messageTimestamp(message.createdAt))
-                    .font(.caption2)
-                    .foregroundStyle(Palette.subdued)
+                .padding(.horizontal, 4)
             }
-            .padding(.horizontal, 4)
 
         case .sending:
             HStack(spacing: 4) {

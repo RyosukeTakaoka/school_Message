@@ -11,6 +11,8 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
         case text(String)
         /// 圧縮済みファイルのローカル位置とメタデータ.
         case media(LocalMedia)
+        /// 対戦の 1 手(盤面をまるごと持つ).
+        case game(GameSnapshot)
     }
 
     /// 圧縮・サムネイル生成まで済ませたローカルメディア.
@@ -99,6 +101,8 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
         switch body {
         case .text(let value):
             content = .text(value)
+        case .game(let snapshot):
+            content = .game(snapshot)
         case .media(let media):
             let attachment = MediaAttachment(
                 id: media.attachmentID,

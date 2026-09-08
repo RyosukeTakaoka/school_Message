@@ -170,6 +170,32 @@ enum CKSchema {
         }
     }
 
+    // MARK: - 掲示板
+
+    /// 掲示板のスレッド.
+    ///
+    /// チャットと違い**誰でも読める前提**なので, 会話鍵での暗号化は行わない.
+    /// 本文が平文で保存されることは画面と規約で明示している.
+    enum BoardThread {
+        static let recordType = "BoardThread"
+
+        static let title = "title"              // 平文
+        static let authorID = "authorID"        // QUERYABLE
+        static let createdAt = "createdAt"      // QUERYABLE, SORTABLE
+        /// 最後の書き込み時刻. 一覧の並べ替えに使う. QUERYABLE, SORTABLE.
+        static let lastPostedAt = "lastPostedAt"
+    }
+
+    /// 掲示板の書き込み.
+    enum BoardPost {
+        static let recordType = "BoardPost"
+
+        static let thread = "thread"            // Reference, QUERYABLE
+        static let authorID = "authorID"        // QUERYABLE
+        static let body = "body"                // 平文
+        static let createdAt = "createdAt"      // QUERYABLE, SORTABLE
+    }
+
     // MARK: - Subscription
 
     enum SubscriptionID {

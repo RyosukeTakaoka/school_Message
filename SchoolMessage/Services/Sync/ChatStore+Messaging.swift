@@ -192,6 +192,31 @@ extension ChatStore {
         }
     }
 
+    // MARK: - 対戦(オセロ)
+
+    /// この会話でいま進行している対戦.
+    ///
+    /// 1 手 = 1 メッセージなので, 最後の対戦メッセージが現在の盤面になる.
+    func currentGame(in conversationID: ConversationID) -> GameSnapshot? {
+        messagesByConversation[conversationID]?
+            .last(where: { $0.content.game != nil && !$0.isUnsent })?
+            .content.game
+    }
+
+    /// 対戦を始める / 石を置く.
+    ///
+    /// 盤面をまるごと載せたメッセージを送るだけなので, 送信の仕組みは
+    /// 通常のメッセージと同じ(オフラインなら送信待ちに積まれる).
+    func sendGameMove(_ snapshot: GameSnapshot, in conversationID: ConversationID) async {
+        guard let me = currentUserID else { return }
+        let outgoing = OutgoingMessage(
+            conversationID: conversationID,
+            senderID: me,
+            body: .game(snapshot)
+        )
+        await enqueueAndShow(outgoing)
+    }
+
     /// キューに積み, 送信完了を待たずに吹き出しを出す.
     private func enqueueAndShow(_ outgoing: OutgoingMessage) async {
         await outboxQueue.enqueue(outgoing)
@@ -206,6 +231,7 @@ extension ChatStore {
         let preview: String
         switch outgoing.body {
         case .text(let text): preview = text
+        case .game(let snapshot): preview = snapshot.previewText
         case .media(let media): preview = media.kind == .image
             ? String(localized: "写真")
             : String(localized: "動画")

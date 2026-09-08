@@ -15,19 +15,27 @@ enum MessageContent: Hashable, Sendable {
     case text(String)
     case image(MediaAttachment)
     case video(MediaAttachment)
+    /// チャットに付随する対戦(オセロ)の 1 手.
+    case game(GameSnapshot)
 
     /// 添付を持つケースの共通アクセサ.
     var attachment: MediaAttachment? {
         switch self {
-        case .text: nil
+        case .text, .game: nil
         case .image(let attachment), .video(let attachment): attachment
         }
+    }
+
+    /// 対戦のケースの共通アクセサ.
+    var game: GameSnapshot? {
+        if case .game(let snapshot) = self { return snapshot }
+        return nil
     }
 
     /// 添付を差し替えた新しい content を返す(アップロード完了時の更新に使う).
     func replacingAttachment(_ attachment: MediaAttachment) -> MessageContent {
         switch self {
-        case .text: self
+        case .text, .game: self
         case .image: .image(attachment)
         case .video: .video(attachment)
         }
@@ -39,6 +47,7 @@ enum MessageContent: Hashable, Sendable {
         case .text(let body): body
         case .image: String(localized: "写真")
         case .video: String(localized: "動画")
+        case .game(let snapshot): snapshot.previewText
         }
     }
 }
@@ -212,21 +221,30 @@ struct MessagePayload: Hashable, Sendable, Codable {
     /// 会話の参加者以外には読めない.
     var isUnsent: Bool?
 
+    /// 対戦の状態. 平文のフィールドを増やさずに済ませるため, ここに入れる.
+    var game: GameSnapshot?
+
     init(
         text: String? = nil,
         media: MediaMetadata? = nil,
         replyTo: ReplyReference? = nil,
-        isUnsent: Bool? = nil
+        isUnsent: Bool? = nil,
+        game: GameSnapshot? = nil
     ) {
         self.text = text
         self.media = media
         self.replyTo = replyTo
         self.isUnsent = isUnsent
+        self.game = game
     }
 
     init(content: MessageContent, replyTo: ReplyReference? = nil) {
         self.replyTo = replyTo
         switch content {
+        case .game(let snapshot):
+            self.text = nil
+            self.media = nil
+            self.game = snapshot
         case .text(let body):
             self.text = body
             self.media = nil

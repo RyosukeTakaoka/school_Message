@@ -25,6 +25,10 @@ enum Palette {
     static let success = Color.green
     static let subdued = Color.secondary
 
+    /// オセロの盤. 石の白黒がどちらもはっきり見える緑にする.
+    static let boardSquare = Color(red: 0.13, green: 0.55, blue: 0.35)
+    static let boardLine = Color(red: 0.08, green: 0.36, blue: 0.23)
+
     /// アバターの背景色. ID から決まるので, 同じ人はいつも同じ色になる.
     ///
     /// `String.hashValue` は起動ごとに種が変わるため使えない

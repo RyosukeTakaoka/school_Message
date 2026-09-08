@@ -97,7 +97,7 @@ private struct MainSplitView: View {
     @State private var presentedSheet: Sheet?
 
     private enum Sheet: String, Identifiable {
-        case friends, createGroup, profile
+        case friends, createGroup, board, profile
         var id: String { rawValue }
     }
 
@@ -109,6 +109,7 @@ private struct MainSplitView: View {
                 selection: $store.selectedConversationID,
                 onShowFriends: { presentedSheet = .friends },
                 onCreateGroup: { presentedSheet = .createGroup },
+                onShowBoard: { presentedSheet = .board },
                 onShowProfile: { presentedSheet = .profile }
             )
             .navigationSplitViewColumnWidth(
@@ -134,6 +135,8 @@ private struct MainSplitView: View {
                 FriendsView()
             case .createGroup:
                 CreateGroupView()
+            case .board:
+                BoardView()
             case .profile:
                 ProfileView()
             }

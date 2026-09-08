@@ -111,6 +111,20 @@ protocol ChatBackend: Sendable {
     /// 自分以外の参加者の既読位置. 「自分の送信に既読が付いたか」の表示に使う.
     func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date]
 
+    // MARK: 掲示板
+
+    /// スレッド一覧(最後の書き込みが新しい順).
+    func fetchBoardThreads() async throws -> [BoardThread]
+
+    /// スレッドを立てる. 最初の書き込みも同時に行う.
+    func createBoardThread(title: String, body: String) async throws -> BoardThread
+
+    /// スレッドの書き込み(古い順).
+    func fetchBoardPosts(in threadID: ThreadID) async throws -> [BoardPost]
+
+    /// スレッドに書き込む.
+    func createBoardPost(in threadID: ThreadID, body: String) async throws -> BoardPost
+
     // MARK: メディア
 
     /// 添付の本体を復号してローカルにダウンロードし, その URL を返す.

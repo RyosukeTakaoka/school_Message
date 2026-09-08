@@ -56,6 +56,8 @@ enum UserTag: Sendable {}
 enum ConversationTag: Sendable {}
 enum MessageTag: Sendable {}
 enum AttachmentTag: Sendable {}
+enum ThreadTag: Sendable {}
+enum PostTag: Sendable {}
 
 /// アプリ内部のユーザ ID. CloudKit の `CKRecord.ID.recordName`(userRecordID) と一致させる.
 /// サーバが押印する値と同一にすることで, なりすましをサーバ側の情報だけで検出できる.
@@ -63,3 +65,5 @@ typealias UserID = Identifier<UserTag>
 typealias ConversationID = Identifier<ConversationTag>
 typealias MessageID = Identifier<MessageTag>
 typealias AttachmentID = Identifier<AttachmentTag>
+typealias ThreadID = Identifier<ThreadTag>
+typealias PostID = Identifier<PostTag>
