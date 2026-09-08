@@ -18,9 +18,15 @@ extension CloudKitBackend {
     func fetchBoardThreads() async throws -> [BoardThread] {
         let me = try await currentUserID()
 
+        // 「全件取得」を NSPredicate(value: true) で書くと, CloudKit 側で
+        // recordID(エラー文では recordName と出る)を Queryable にする, という
+        // 通常のフィールドとは別枠の特別な索引が要る. これは .ckdb のスキーマ
+        // 定義には現れず, Console の Indexes タブでしか設定できない.
+        // 代わりに, 元から Queryable な createdAt への比較にしておけば,
+        // この特別な索引に頼らずに全件を拾える.
         let query = CKQuery(
             recordType: CKSchema.BoardThread.recordType,
-            predicate: NSPredicate(value: true)
+            predicate: NSPredicate(format: "%K > %@", CKSchema.BoardThread.createdAt, Date.distantPast as NSDate)
         )
         query.sortDescriptors = [NSSortDescriptor(key: CKSchema.BoardThread.lastPostedAt, ascending: false)]
 

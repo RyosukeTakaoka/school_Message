@@ -206,6 +206,28 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 
 ---
 
+## 付録：掲示板で「field 'recordName' is not marked queryable」が出るとき
+
+**原因**: スレッド一覧の取得(`fetchBoardThreads`)は、以前
+「全件取得」を `NSPredicate(value: true)` で行っていた。CloudKit では
+この形の条件を使うと, レコードの `recordID`(エラー文では紛らわしく
+`recordName` と出るが同じもの)を Console の Indexes タブで **Queryable**
+にする必要がある。これは通常のフィールドとは別枠の, システム用の特別な
+索引で, **`.ckdb` のスキーマ定義には現れない**(インポートしても入らない)。
+
+**対応**: コード側は `createdAt`(元から Queryable)への比較に変えたので
+`git pull` すれば直る。手元をすぐ直したい場合は、次の手動設定でも直る。
+
+1. CloudKit Console → **Development** → Schema → **Indexes**
+2. レコードタイプ **BoardThread** を選ぶ
+3. フィールド一覧から **`recordID`**(`recordName` ではなく `recordID` と
+   いう表記で出る)を探し、**Queryable** にチェック
+4. 左下の **Deploy Schema Changes…** で **Production** にも反映
+
+索引の再構築に少し時間がかかることがある(Console に案内が出る)。
+
+---
+
 ## 付録：それでも通知が来ないとき
 
 ### まず切り分ける（CloudKit Console だけでできる）

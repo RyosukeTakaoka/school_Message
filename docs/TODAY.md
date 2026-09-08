@@ -323,6 +323,7 @@ TestFlight 版は **Production** の CloudKit を使います。
 | Development では届くが TestFlight では届かない | **まず 2 台の iPadOS の版を確認**。26.4 ちょうどなら既知の OS 不具合。26.4.1 以降に更新する（`docs/CLOUDKIT_MANUAL_SETUP.md`）|
 | Console.app に `attempting to create a subscription in a production container` | **これが実際の原因だった。** `docs/CLOUDKIT_MANUAL_SETUP.md`「購読の作成自体が Production で一律に失敗する場合」を見て、`Message.conversationKey` を追加・Deploy する |
 | 掲示板が動かない | 手順 2（Deploy し忘れ） |
+| 掲示板で `field 'recordName' is not marked queryable` | `git pull` で直る（コード側で回避済み）。手元をすぐ直したいときは `docs/CLOUDKIT_MANUAL_SETUP.md` 付録「掲示板で〜が出るとき」 |
 | すれ違わない | `docs/STREETPASS.md` の「7. うまくいかないときの確認順」 |
 | ビルドエラー | エラー文をそのまま貼ってください |
 | プロジェクトが壊れた | `git checkout SchoolMessage.xcodeproj` |
