@@ -77,6 +77,11 @@ CloudKit Console: https://icloud.developer.apple.com/dashboard/
 > `titleCipher` / `imageCipher` は**グループでしか使いません**。
 > Development でグループを一度も作っていないと自動生成されないため、
 > 「グループ作成だけ Production で失敗する」の直接の原因になります。
+>
+> **確認のしかた**: Record Types の一覧に出る「N fields」には、CloudKit の
+> システム項目 6 つが含まれます。`Conversation` が **10 fields** なら
+> 自前のフィールドは 4 つ（`kind` / `participantIDs` / `ownerID` / `createdAt`）で、
+> **`titleCipher` と `imageCipher` が無い**状態です。12 fields になれば揃っています。
 
 ### ConversationKey
 
@@ -181,7 +186,24 @@ CloudKit は「インデックスの無いフィールドでは絞り込めな�
 
 ## 付録：それでも通知が来ないとき
 
-### まず切り分ける
+### まず切り分ける（CloudKit Console だけでできる）
+
+アプリを更新しなくても、**購読がサーバに作られているか**は Console で見られます。
+
+1. CloudKit Console → 左メニュー **Data → Subscriptions**
+2. 環境を確認する（**TestFlight 版の話をするなら Production**、
+   Xcode から実行した版の話なら Development）
+3. **`sub-new-messages-v1`** があるか見る
+
+| 結果 | 意味 | 次にすること |
+|---|---|---|
+| ある | 購読は正常。CloudKit は通知を送ろうとしている | **配信側の問題**。下記「Xcode 側の確認」へ |
+| ない | 購読の作成に失敗している | アプリの「購読をもう一度設定する」を押し、エラー内容を確認する |
+
+> Console にはログイン中の Apple ID 自身の購読が出ます。アプリを使っている
+> iPad と同じ Apple ID でログインしていれば、そこに現れます。
+
+### アプリ側で切り分ける
 
 プロフィール画面の **「通知の状態を調べる」** を実行してください。
 結果ごとに、見るべき場所が変わります。
