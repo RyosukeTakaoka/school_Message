@@ -74,21 +74,45 @@ struct StreetPassEncounter: Codable, Hashable, Sendable, Identifiable {
     /// まだ一覧を開いて確認していないか.
     var isUnseen: Bool
 
+    /// 最後に見えたときの電波の強さ(dBm). 参考値.
+    ///
+    /// 距離の判定には**使わない**. RSSI は人の体・壁・端末の向きで簡単に
+    /// 20dBm 以上変わるので, これで足切りすると本当のすれ違いを取りこぼす.
+    /// 記録の目的は「どのくらいの近さで拾えているか」を後から確かめること.
+    var lastRSSI: Int?
+    /// これまでで最も強かった値.
+    var strongestRSSI: Int?
+
     var id: String { card.userID.rawValue }
 
-    init(card: StreetPassCard, at date: Date = .now) {
+    init(card: StreetPassCard, rssi: Int? = nil, at date: Date = .now) {
         self.card = card
         self.firstMetAt = date
         self.lastMetAt = date
         self.meetCount = 1
         self.isUnseen = true
+        self.lastRSSI = rssi
+        self.strongestRSSI = rssi
     }
 
     /// もう一度すれ違ったときの更新. 一言は最新のものに置き換える.
-    mutating func met(with card: StreetPassCard, at date: Date = .now) {
+    mutating func met(with card: StreetPassCard, rssi: Int? = nil, at date: Date = .now) {
         self.card = card
         self.lastMetAt = date
         self.meetCount += 1
         self.isUnseen = true
+        touch(rssi: rssi, at: date)
+    }
+
+    /// 同じすれ違いの中での更新(回数は増やさない).
+    ///
+    /// 1 回のすれ違いでも, こちらが相手を読む経路と, 相手がこちらへ書き込む
+    /// 経路の両方が成立することがある. 2 回と数えないための入り口.
+    mutating func touch(rssi: Int?, at date: Date = .now) {
+        lastMetAt = max(lastMetAt, date)
+        if let rssi {
+            lastRSSI = rssi
+            strongestRSSI = max(strongestRSSI ?? rssi, rssi)
+        }
     }
 }

@@ -95,18 +95,37 @@ struct StreetPassView: View {
     @ViewBuilder
     private var statusSection: some View {
         Section {
-            LabeledContent(String(localized: "状態")) {
+            LabeledContent(String(localized: "いまの状態")) {
                 Text(statusText)
                     .foregroundStyle(statusIsHealthy ? Palette.subdued : Palette.failure)
             }
+            LabeledContent(String(localized: "システムに起こされた回数")) {
+                Text(restoreText)
+                    .foregroundStyle(Palette.subdued)
+            }
+        } header: {
+            Text("動作状況")
         } footer: {
             Text("""
                 アプリを開いている間は数秒で見つかります。\
-                閉じている（背面にある）間も探し続けますが、iOS が電池を守るために大きく間引くので、\
-                数十秒から数分かかることがあります。\
-                **アプリを上スワイプで終了させると止まります。**
+                閉じている（背面にある）間や、iOS にいったん終了させられた後も、\
+                相手が近くに来ればシステムがこのアプリを起こし直します。\
+                ただし電池を守るために大きく間引かれるので、数十秒から数分かかることがあります。
+
+                **アプリを上スワイプで終了させたときだけは止まります。** これは iOS の決まりで、\
+                アプリ側では変えられません。
+
+                「システムに起こされた回数」は、閉じている間も動いている証拠です。\
+                しばらく使っても 0 のままなら、2 台とも Bluetooth が入っているか確かめてください。
                 """)
         }
+    }
+
+    private var restoreText: String {
+        guard let last = streetPass.lastRestoredAt else {
+            return String(localized: "\(streetPass.restoreCount) 回")
+        }
+        return String(localized: "\(streetPass.restoreCount) 回 · 最後は\(DateDisplay.daySeparator(last))")
     }
 
     private var statusText: String {
