@@ -198,7 +198,8 @@ Core Bluetooth（`bluetooth-central` / `bluetooth-peripheral`）だけ。
 
 ### Live Activity（ActivityKit）
 
-→ **入れた。** 手順は [`LIVE_ACTIVITY.md`](LIVE_ACTIVITY.md)。以下は判断の記録。
+→ **アプリ側のコードだけ入れて、導入は見送り。** 手順は
+[`LIVE_ACTIVITY.md`](LIVE_ACTIVITY.md)。以下は判断の記録。
 
 **結論: 成功率は上がらない。ただし④の予防には効く。**
 
@@ -221,13 +222,13 @@ Bluetooth の成功率そのものは 1% も変わらない。
 - 主アプリの Info.plist に `NSSupportsLiveActivities`
 - iPad のロック画面 Live Activity は iPadOS 17 以降（Dynamic Island は iPad に無い）
 
-アプリ側のコードは入れてあるので、**pull するだけで
-「この端末で使えるかどうか」がすれ違い通信の画面に出る**。
-Widget Extension の追加は、そこが「使えます」だったときだけやればよい。
-使えない端末で作業しても、ロック画面には何も出ない。
+**結論として見送った。** 成功率が 1% も上がらない以上、
+Xcode でのターゲット追加（今日の作業で唯一 pull だけで済まない部分）に見合わない。
+効果は見かけ上のものだけ。
 
-Widget Extension が無い間も、すれ違い通信そのものは通常どおり動く
-（`Activity.request` が失敗し、その理由が診断欄に出るだけ）。
+アプリ側のコードは残してある。Widget Extension が無い間は
+`Activity.request` が黙って失敗するだけで、すれ違い通信そのものは通常どおり動く。
+やりたくなったら [`LIVE_ACTIVITY.md`](LIVE_ACTIVITY.md) の手順どおりに進めればよい。
 
 ---
 

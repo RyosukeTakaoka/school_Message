@@ -1,7 +1,7 @@
 # 今日 Mac でやること（最初から全部）
 
 前回のプッシュ以降に増えたもの:
-**掲示板 / オセロ / 色勝負 / すれ違い通信 / ロック画面表示**、
+**掲示板 / オセロ / 色勝負 / すれ違い通信**、
 それと **通知が来ない問題の修正**。
 
 やる順番に並べてあります。上から順にやれば漏れません。
@@ -15,11 +15,10 @@
 | 5 | アプリ内の診断を実行 | iPad | 3 分 | ✅ |
 | 6 | Console.app でログを見られるようにする | Mac | 5 分 | 推奨 |
 | 7 | すれ違い通信を確認 | iPad × 2 | 20 分 | 推奨 |
-| 8 | ロック画面表示が使えるか確認 | iPad | 1 分 | 推奨 |
-| 9 | （8 が「使えます」なら）Widget Extension を追加 | Xcode | 10 分 | 任意 |
-| 10 | TestFlight に上げる | Xcode | 15 分 | 任意 |
+| 8 | TestFlight に上げる | Xcode | 15 分 | 任意 |
 
-**Apple Developer サイトでの作業は、9 を含めて一切ありません。**
+**Xcode でのターゲット追加も、Apple Developer サイトでの作業も、一切ありません。**
+すべて「pull してビルドする」の範囲で終わります。
 
 ---
 
@@ -209,7 +208,6 @@ subsystem:app.takaoka.com.schoolmessage
 | `restored N peripheral(s)` | 復元された |
 | `read a card over bluetooth` | 相手の名刺を読んだ |
 | `received a dropped card over bluetooth` | 相手に名刺を置かれた |
-| `started the live activity` | ロック画面表示が出た |
 
 > ログが 1 行も出ない場合、手順 3 の「開始」を押していないことが多いです。
 
@@ -265,55 +263,7 @@ subsystem:app.takaoka.com.schoolmessage
 
 ---
 
-## 8. ロック画面表示が使えるか確認（1 分）
-
-すれ違い通信の画面に **「ロック画面表示」** という行があります。
-
-| 表示 | 次にすること |
-|---|---|
-| **使えます（まだ出ていません）** | **手順 9 をやる価値あり** |
-| **この端末または設定では使えません** | **手順 9 は飛ばす** |
-| 何かのエラー文 | 文面を教えてください |
-
-Live Activity が iPad で使えるかは iPadOS の版によって違うので、
-**推測せず実機に聞く**形にしてあります。
-
----
-
-## 9. Widget Extension を追加（8 が「使えます」のときだけ）
-
-**唯一、Xcode でターゲットを追加する作業です。** 所要 10 分。
-
-詳しい手順は **`docs/LIVE_ACTIVITY.md`**。要点だけ:
-
-1. **File > New > Target… → Widget Extension**
-   - Product Name: **`StreetPassWidget`**（この名前ちょうど）
-   - **Include Live Activity にチェック**
-   - Finish → スキーム切り替えは **Cancel**
-2. ターミナルで 1 行:
-   ```sh
-   cp WidgetSource/StreetPassWidgetLiveActivity.swift \
-      StreetPassWidget/StreetPassWidgetLiveActivity.swift
-   ```
-3. Xcode で `SchoolMessage/Services/StreetPass/StreetPassActivityAttributes.swift`
-   を選び、右のインスペクタ → **Target Membership** で
-   **`StreetPassWidget` にもチェック**
-4. スキームを **SchoolMessage** に戻して ⌘R
-
-**期待できること・できないこと**
-
-- ❌ Bluetooth の成功率は **1% も上がりません**。
-  Live Activity はバックグラウンド実行を与えません
-- ✅ ロック画面に出ていれば、**アプリを上スワイプで終了させにくくなる**。
-  強制終了後のすれ違いは実装では救えないので、これが唯一の緩和策
-- ✅ すれ違いで起こされたその機会に更新されるので、
-  アプリを開かずに今日の人数が分かる
-
-**壊れたら**: `git checkout SchoolMessage.xcodeproj` で元に戻せます。
-
----
-
-## 10. TestFlight に上げる
+## 8. TestFlight に上げる
 
 1. Xcode 上部の実行先を **Any iOS Device (arm64)** にする
 2. **Product → Archive**
@@ -345,7 +295,6 @@ TestFlight 版は **Production** の CloudKit を使います。
 | 通知が来ない | 手順 3（capability）→ 手順 5（診断）→ `docs/CLOUDKIT_MANUAL_SETUP.md` |
 | 掲示板が動かない | 手順 2（Deploy し忘れ） |
 | すれ違わない | `docs/STREETPASS.md` の「7. うまくいかないときの確認順」 |
-| ロック画面に出ない | `docs/LIVE_ACTIVITY.md` の「うまくいかないとき」 |
 | ビルドエラー | エラー文をそのまま貼ってください |
 | プロジェクトが壊れた | `git checkout SchoolMessage.xcodeproj` |
 
@@ -363,3 +312,10 @@ TestFlight 版は **Production** の CloudKit を使います。
   → Bluetooth の Background Modes は entitlement を持たず、Info.plist だけで有効
 - ❌ App Store Connect でのプライバシー申告
   → 同意画面を止めてあるため
+- ❌ **Widget Extension の追加（ロック画面表示 / Live Activity）**
+  → 見送り。Live Activity はバックグラウンド実行を与えないので、
+  **すれ違い通信の成功率は 1% も上がらない**。効果は「動いているのが見えていれば
+  アプリを強制終了されにくくなる」という見かけ上のものだけで、
+  Xcode でのターゲット追加に見合わないと判断した。
+  アプリ側のコードは残してあるので、やりたくなったら
+  [`docs/LIVE_ACTIVITY.md`](LIVE_ACTIVITY.md) の手順で追加できる

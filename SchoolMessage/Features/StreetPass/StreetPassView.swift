@@ -103,10 +103,14 @@ struct StreetPassView: View {
                 Text(restoreText)
                     .foregroundStyle(Palette.subdued)
             }
-            LabeledContent(String(localized: "ロック画面表示")) {
-                Text(liveActivityText)
-                    .foregroundStyle(Palette.subdued)
-                    .multilineTextAlignment(.trailing)
+            // ロック画面表示は Widget Extension を足したときだけ意味を持つ.
+            // 足していない間は失敗の理由(英語のエラー文)しか出せず,
+            // 不具合に見えてしまうので, 実際に出ているときだけ表示する.
+            if streetPass.isLiveActivityRunning {
+                LabeledContent(String(localized: "ロック画面表示")) {
+                    Text("出ています")
+                        .foregroundStyle(Palette.subdued)
+                }
             }
         } header: {
             Text("動作状況")
@@ -131,22 +135,6 @@ struct StreetPassView: View {
             return String(localized: "\(streetPass.restoreCount) 回")
         }
         return String(localized: "\(streetPass.restoreCount) 回 · 最後は\(DateDisplay.daySeparator(last))")
-    }
-
-    /// ロック画面表示(Live Activity)の状況.
-    ///
-    /// この端末で使えるかどうかは, 推測せずここで確かめられるようにしている.
-    /// 使えなくても, すれ違い通信そのものは通常どおり動く.
-    private var liveActivityText: String {
-        if streetPass.isLiveActivityRunning {
-            return String(localized: "出ています")
-        }
-        if let error = streetPass.liveActivityError {
-            return error
-        }
-        return streetPass.isLiveActivityAvailable
-            ? String(localized: "使えます（まだ出ていません）")
-            : String(localized: "この端末または設定では使えません")
     }
 
     private var statusText: String {
