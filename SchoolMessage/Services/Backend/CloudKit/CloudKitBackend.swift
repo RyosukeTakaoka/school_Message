@@ -642,14 +642,28 @@ actor CloudKitBackend: ChatBackend {
     /// 「誰から来たか」の判定と通知の表示は端末側で行う
     /// (`PushNotificationService.handleRemoteNotification`).
     private func savePerConversationSubscriptions(me: UserID) async throws {
-        let records = try await queryWithRetry(
-            CKQuery(
-                recordType: CKSchema.Conversation.recordType,
-                predicate: NSPredicate(format: "%K CONTAINS %@", CKSchema.Conversation.participantIDs, me.rawValue)
-            ),
-            desiredKeys: [],
-            limit: Self.perConversationSubscriptionLimit
-        )
+        let records: [CKRecord]
+        do {
+            records = try await queryWithRetry(
+                CKQuery(
+                    recordType: CKSchema.Conversation.recordType,
+                    predicate: NSPredicate(format: "%K CONTAINS %@", CKSchema.Conversation.participantIDs, me.rawValue)
+                ),
+                desiredKeys: [],
+                limit: Self.perConversationSubscriptionLimit
+            )
+        } catch {
+            // ここで握りつぶすと「何も作られなかったのに, なぜかは分からない」に
+            // 逆戻りする. 会話の一覧を取れなければ, 1 件も購読を作れない.
+            Log.push.error(
+                "could not list conversations for per-conversation subscriptions: \(CloudKitErrorMapping.appError(from: error).localizedDescription, privacy: .public)"
+            )
+            throw error
+        }
+
+        if records.isEmpty {
+            Log.push.notice("no conversations to subscribe to yet")
+        }
 
         var lastError: (any Error)?
         for record in records {

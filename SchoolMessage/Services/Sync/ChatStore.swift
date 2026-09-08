@@ -215,7 +215,9 @@ final class ChatStore {
             pushSubscriptionStatus = .active
         } catch {
             let appError = AppError.wrap(error)
-            Log.push.notice("push subscriptions unavailable; falling back to polling")
+            Log.push.notice(
+                "push subscriptions unavailable; falling back to polling: \(appError.localizedDescription, privacy: .public)"
+            )
             pushSubscriptionStatus = .failed(appError)
         }
     }

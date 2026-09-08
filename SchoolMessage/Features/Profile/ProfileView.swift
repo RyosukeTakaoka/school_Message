@@ -17,6 +17,7 @@ struct ProfileView: View {
     @State private var readingDocument: LegalDocument?
     @State private var diagnostics: PushNotificationService.Diagnostics?
     @State private var isDiagnosing = false
+    @State private var isRetryingSubscription = false
 
     private var store: ChatStore { environment.store }
 
@@ -187,11 +188,30 @@ struct ProfileView: View {
             if !diagnostics.isHealthy {
                 Button(String(localized: "購読をもう一度設定する")) {
                     Task {
+                        isRetryingSubscription = true
                         await store.configurePushSubscriptions()
                         await runDiagnostics()
+                        isRetryingSubscription = false
                     }
                 }
                 .font(.footnote)
+                .disabled(isRetryingSubscription)
+
+                // 押した本人には成功も失敗も見えていなければ意味が無い.
+                // configurePushSubscriptions() の結果はここでしか表示されないので,
+                // 実際に起きたエラーをそのまま出す.
+                if isRetryingSubscription {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                        Text("設定しています…")
+                            .font(.caption)
+                            .foregroundStyle(Palette.subdued)
+                    }
+                } else if case .failed(let error) = store.pushSubscriptionStatus {
+                    Text("作り直しに失敗しました: \(error.errorDescription ?? String(localized: "不明なエラー"))")
+                        .font(.caption)
+                        .foregroundStyle(Palette.failure)
+                }
             }
 
             Text(diagnostics.isHealthy
