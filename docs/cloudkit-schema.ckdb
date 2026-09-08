@@ -1,0 +1,130 @@
+DEFINE SCHEMA
+
+    RECORD TYPE Conversation (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        imageCipher     BYTES,
+        kind            STRING QUERYABLE SEARCHABLE SORTABLE,
+        ownerID         STRING QUERYABLE SEARCHABLE SORTABLE,
+        participantIDs  LIST<STRING> QUERYABLE SEARCHABLE,
+        titleCipher     BYTES,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ConversationKey (
+        "___createTime"    TIMESTAMP,
+        "___createdBy"     REFERENCE,
+        "___etag"          STRING,
+        "___modTime"       TIMESTAMP,
+        "___modifiedBy"    REFERENCE,
+        "___recordID"      REFERENCE,
+        conversation       REFERENCE QUERYABLE,
+        ephemeralPublicKey BYTES QUERYABLE SORTABLE,
+        recipientID        STRING QUERYABLE SEARCHABLE SORTABLE,
+        wrappedKey         BYTES QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ConversationLeave (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        conversation    REFERENCE QUERYABLE,
+        leftAt          TIMESTAMP QUERYABLE SORTABLE,
+        userID          STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Friendship (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        friendID        STRING QUERYABLE SEARCHABLE SORTABLE,
+        ownerID         STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Message (
+        "___createTime"   TIMESTAMP,
+        "___createdBy"    REFERENCE,
+        "___etag"         STRING,
+        "___modTime"      TIMESTAMP,
+        "___modifiedBy"   REFERENCE,
+        "___recordID"     REFERENCE,
+        conversation      REFERENCE QUERYABLE,
+        mediaAsset        ASSET,
+        participantIDs    LIST<STRING> QUERYABLE SEARCHABLE,
+        payload           BYTES QUERYABLE SORTABLE,
+        senderDisplayName STRING QUERYABLE SEARCHABLE SORTABLE,
+        senderID          STRING QUERYABLE SEARCHABLE SORTABLE,
+        sentAt            TIMESTAMP QUERYABLE SORTABLE,
+        thumbnailCipher   BYTES QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE ReadState (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        conversation    REFERENCE QUERYABLE,
+        lastReadAt      TIMESTAMP QUERYABLE SORTABLE,
+        userID          STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE UserProfile (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        avatar          ASSET,
+        avatarByteCount INT64 QUERYABLE SORTABLE,
+        displayName     STRING QUERYABLE SEARCHABLE SORTABLE,
+        handle          STRING QUERYABLE SEARCHABLE SORTABLE,
+        publicKey       BYTES QUERYABLE SORTABLE,
+        updatedAt       TIMESTAMP QUERYABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE Users (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        roles           LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );

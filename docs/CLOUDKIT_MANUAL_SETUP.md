@@ -1,5 +1,18 @@
 # CloudKit を手動で設定する手順
 
+> **いちばん速い方法: [`cloudkit-schema.ckdb`](cloudkit-schema.ckdb) を読み込む**
+>
+> このリポジトリの `docs/cloudkit-schema.ckdb` は、**アプリが必要とする
+> スキーマの完成形**です。CloudKit Console の
+> **Development** 環境で **Import Schema...** から読み込み、そのあと
+> **Deploy Schema Changes...** で Production へ反映すれば、
+> 下の手動手順をすべて省略できます。
+>
+> 2026-09-08 時点の実機の Development 環境と比べて、次の 2 つが不足していました。
+> - `UserProfile.avatar`（ASSET）… **プロフィール画像を変更できない原因**
+> - `ConversationLeave` レコードタイプ … グループ退出に必要
+
+
 アプリを動かしてスキーマを自動生成させる代わりに、CloudKit Console から手で
 レコードタイプ・フィールド・インデックスを作る手順です。
 
@@ -50,10 +63,16 @@ CloudKit Console: https://icloud.developer.apple.com/dashboard/
 |---|---|
 | `handle` | String |
 | `displayName` | String |
-| `avatar` | Asset |
+| **`avatar`** | **Asset** |
 | `avatarByteCount` | Int(64) |
 | `publicKey` | Bytes |
 | `updatedAt` | Date/Time |
+
+> **`avatar` は自動生成されにくいフィールドです。**
+> プロフィール画像を設定した人が一度もいないと作られません。
+> 無い状態でプロフィール画像を保存しようとすると、Production では
+> 「サーバ側の設定がこの機能に追いついていません」と出て**画像だけ保存できません**。
+> 表示名の変更は成功するので、原因に気付きにくい項目です。
 
 ### Friendship
 

@@ -65,7 +65,8 @@ docs/           設計・スキーマ・手順書
 | [`docs/SECURITY.md`](docs/SECURITY.md) | 暗号化の設計、なりすまし対策、既知の限界 |
 | [`docs/NOTIFICATIONS.md`](docs/NOTIFICATIONS.md) | 通知の仕組みと、本文を確実に出すための次の一手 |
 | [`docs/SETUP.md`](docs/SETUP.md) | Xcode / CloudKit の設定手順 |
-| [`docs/CLOUDKIT_MANUAL_SETUP.md`](docs/CLOUDKIT_MANUAL_SETUP.md) | CloudKit を手動で設定する手順（通知が来ないときのインデックス確認を含む） |
+| [`docs/CLOUDKIT_MANUAL_SETUP.md`](docs/CLOUDKIT_MANUAL_SETUP.md) | CloudKit を手動で設定する手順（通知・グループ・アイコンが動かないときの確認を含む） |
+| [`docs/cloudkit-schema.ckdb`](docs/cloudkit-schema.ckdb) | CloudKit スキーマの完成形。Console の Import Schema で読み込める |
 | [`docs/TESTING.md`](docs/TESTING.md) | 実機での確認シナリオ（A〜H） |
 | [`docs/PRIVACY_POLICY.md`](docs/PRIVACY_POLICY.md) | プライバシーポリシー（公開前に〔 〕内を記入すること） |
 | [`docs/TERMS_OF_SERVICE.md`](docs/TERMS_OF_SERVICE.md) | 利用規約（公開前に〔 〕内を記入すること） |
