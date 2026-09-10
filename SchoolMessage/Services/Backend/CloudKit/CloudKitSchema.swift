@@ -217,6 +217,8 @@ enum CKSchema {
         static let newMessagesSilent = "sub-new-messages-silent-v2"
         /// 自分が参加者に追加された会話.
         static let conversations = "sub-conversations-v2"
+        /// 掲示板への新しい書き込み(通知を受け取りたい人だけが作る).
+        static let newBoardPosts = "sub-new-board-posts-v1"
 
         /// 会話ごとの購読(グローバルな述語が使えない環境向けの代替).
         static func perConversation(_ conversationID: ConversationID) -> String {

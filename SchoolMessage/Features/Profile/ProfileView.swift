@@ -139,14 +139,28 @@ struct ProfileView: View {
     private var notificationSection: some View {
         @Bindable var preferences = environment.notificationPreferences
         return Section {
-            Toggle(String(localized: "通知を受け取る"), isOn: $preferences.isEnabled)
-            Toggle(String(localized: "通知に本文を表示"), isOn: $preferences.showsMessagePreview)
-                .disabled(!preferences.isEnabled)
+            Toggle(String(localized: "メッセージ"), isOn: $preferences.messagesEnabled)
+            Toggle(String(localized: "本文を表示"), isOn: $preferences.showsMessagePreview)
+                .disabled(!preferences.messagesEnabled)
+                .padding(.leading, AppConstants.Layout.standardSpacing)
+
+            Toggle(String(localized: "すれ違い通信"), isOn: $preferences.streetPassEnabled)
+
+            Toggle(
+                String(localized: "掲示板"),
+                isOn: Binding(
+                    get: { preferences.boardEnabled },
+                    set: { newValue in
+                        Task { await environment.pushService.setBoardNotificationsEnabled(newValue) }
+                    }
+                )
+            )
+
             subscriptionStatusRow
         } header: {
             Text("通知")
         } footer: {
-            Text("本文の表示をオフにすると、ロック画面には送信者だけが表示されます。iPad を机に置いたままにすることが多い場合はオフをおすすめします。")
+            Text("種類ごとに通知のオン・オフを選べます。メッセージの本文表示をオフにすると、ロック画面には送信者だけが表示されます。iPad を机に置いたままにすることが多い場合はオフをおすすめします。")
         }
     }
 

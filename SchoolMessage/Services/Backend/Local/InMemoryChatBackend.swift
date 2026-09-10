@@ -349,6 +349,10 @@ actor InMemoryChatBackend: ChatBackend {
 
     func configureSubscriptions() async throws {}
 
+    func configureBoardSubscription() async throws {}
+
+    func removeBoardSubscription() async throws {}
+
     func fetchSubscriptionIDs() async throws -> [String] {
         [CKSchema.SubscriptionID.newMessages, CKSchema.SubscriptionID.conversations]
     }

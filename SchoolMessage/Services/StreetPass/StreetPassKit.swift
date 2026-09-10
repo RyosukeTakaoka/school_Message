@@ -216,7 +216,10 @@ final class StreetPassKit: @unchecked Sendable {
     ///
     /// サーバは通さない(相手とすれ違ったことを外に出さないため).
     /// 通知が許可されていなければ, 黙って何も起きない.
+    /// 設定画面の「すれ違い通信」通知トグルがオフのときも, ここで出さずに終える.
     private func notify(_ card: StreetPassCard, isFirstTime: Bool) {
+        guard NotificationPreferences.streetPassEnabledRawValue() else { return }
+
         let content = UNMutableNotificationContent()
         content.title = String(localized: "すれ違い通信")
         content.body = isFirstTime

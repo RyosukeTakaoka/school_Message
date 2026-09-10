@@ -7,3 +7,6 @@
 
 "PUSH_NEW_MESSAGE_TITLE" = "New message";
 "PUSH_NEW_MESSAGE_BODY" = "%@ sent you a message";
+
+"PUSH_NEW_BOARD_POST_TITLE" = "Board";
+"PUSH_NEW_BOARD_POST_BODY" = "There's a new post";

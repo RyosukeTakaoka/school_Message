@@ -724,6 +724,34 @@ actor CloudKitBackend: ChatBackend {
         }
     }
 
+    /// 掲示板の新着通知. 誰の書き込みでも, 通知をオンにした全員に届く
+    /// (掲示板は誰でも読める前提の場所なので, 参加者で絞り込む必要が無い).
+    ///
+    /// 本文は元々暗号化していないため, メッセージのように
+    /// 「サイレント通知で起こしてから端末内で復号」する手間は要らない.
+    /// CloudKit が生成するアラートだけで完結する.
+    func configureBoardSubscription() async throws {
+        let subscription = CKQuerySubscription(
+            recordType: CKSchema.BoardPost.recordType,
+            predicate: NSPredicate(value: true),
+            subscriptionID: CKSchema.SubscriptionID.newBoardPosts,
+            options: [.firesOnRecordCreation]
+        )
+        subscription.notificationInfo = Self.boardPostNotificationInfo()
+        try await saveSubscription(subscription)
+    }
+
+    /// 掲示板の新着通知を止める. 既に無い場合も成功扱いにする.
+    func removeBoardSubscription() async throws {
+        do {
+            _ = try await database.deleteSubscription(withID: CKSchema.SubscriptionID.newBoardPosts)
+        } catch let error as CKError where error.code == .unknownItem {
+            // 既に削除済み. 何もしなくてよい.
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+    }
+
     /// 画面に出す通知の内容.
     ///
     /// 本文は暗号化されておりサーバでは復号できないため, サーバ生成の通知には
@@ -749,6 +777,16 @@ actor CloudKitBackend: ChatBackend {
         let info = CKSubscription.NotificationInfo()
         info.shouldSendContentAvailable = true
         info.desiredKeys = [CKSchema.Message.conversation]
+        return info
+    }
+
+    /// 掲示板の新着通知の内容. 内容は元から平文なので, 誰の書き込みかまでは
+    /// 出さず「新しい書き込みがあります」とだけ知らせる(バッジは会話の未読と
+    /// 意味が異なるため, ここでは付けない).
+    private static func boardPostNotificationInfo() -> CKSubscription.NotificationInfo {
+        let info = CKSubscription.NotificationInfo()
+        info.titleLocalizationKey = "PUSH_NEW_BOARD_POST_TITLE"
+        info.alertLocalizationKey = "PUSH_NEW_BOARD_POST_BODY"
         return info
     }
 
