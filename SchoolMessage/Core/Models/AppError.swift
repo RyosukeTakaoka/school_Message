@@ -110,7 +110,7 @@ enum AppError: LocalizedError, Equatable {
         case .unsupportedMedia, .mediaProcessingFailed:
             return String(localized: "別の写真・動画を選んでください")
         case .photoLibraryAccessDenied:
-            return String(localized: "「設定」→「School Message」→「写真」から許可してください")
+            return String(localized: "「設定」→「Nexia」→「写真」から許可してください")
         case .mediaSaveFailed:
             return String(localized: "もう一度お試しください")
         case .notAParticipant, .senderMismatch, .underlying:

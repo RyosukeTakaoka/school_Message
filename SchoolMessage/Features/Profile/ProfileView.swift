@@ -242,7 +242,7 @@ struct ProfileView: View {
         case .authorized, .provisional, .ephemeral:
             String(localized: "許可されています")
         case .denied:
-            String(localized: "拒否されています。iPad の「設定」→「通知」→ SchoolMessage で許可してください")
+            String(localized: "拒否されています。iPad の「設定」→「通知」→ Nexia で許可してください")
         case .notDetermined:
             String(localized: "まだ確認していません。チャットを一度開くと許可を求めます")
         @unknown default:
