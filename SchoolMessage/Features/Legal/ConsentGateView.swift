@@ -53,7 +53,7 @@ struct ConsentGateView: View {
 
             Text(consent.needsReconsentAfterUpdate
                  ? "利用規約とプライバシーポリシーを改定しました。内容をご確認のうえ、あらためて同意をお願いします。"
-                 : "SchoolMessage を使うには、利用規約とプライバシーポリシーへの同意が必要です。大事な点を先にまとめました。")
+                 : "Nexia を使うには、利用規約とプライバシーポリシーへの同意が必要です。大事な点を先にまとめました。")
                 .font(.body)
                 .foregroundStyle(Palette.subdued)
                 .fixedSize(horizontal: false, vertical: true)
