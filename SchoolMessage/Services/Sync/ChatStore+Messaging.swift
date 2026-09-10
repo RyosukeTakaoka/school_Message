@@ -6,7 +6,17 @@ extension ChatStore {
     // MARK: - 取得
 
     /// チャットを開く. 一覧で選ばれたときに呼ぶ.
+    ///
+    /// 通知タップ(アプリを起こしての起動)では, `conversations` の取得が
+    /// まだ終わっていない段階でここに来ることがある. その状態のまま選択だけ
+    /// 先に確定させると, 一覧の `List(selection:)` にまだ存在しない行を
+    /// 選択済み扱いにしてしまい, 直後に一覧が届いて行が現れた瞬間に
+    /// SwiftUI 側で不整合を起こして落ちる(通知をタップしたときだけ
+    /// クラッシュしていた原因). 選択する前に, 対象が一覧にあることを保証する.
     func openConversation(_ conversationID: ConversationID) async {
+        if conversation(conversationID) == nil {
+            await refreshConversations()
+        }
         selectedConversationID = conversationID
         if messagesByConversation[conversationID] == nil {
             await refreshMessages(in: conversationID)

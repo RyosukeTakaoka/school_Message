@@ -13,6 +13,20 @@ struct MediaViewerScreen: View {
     let attachment: MediaAttachment
     let conversationID: ConversationID
 
+    private enum SaveState: Equatable {
+        case idle
+        case saving
+        case saved
+        case failed(AppError)
+
+        var failedError: AppError? {
+            if case .failed(let error) = self { return error }
+            return nil
+        }
+    }
+
+    @State private var saveState: SaveState = .idle
+
     private var loader: MediaLoader { environment.mediaLoader }
 
     var body: some View {
@@ -20,6 +34,11 @@ struct MediaViewerScreen: View {
             Color.black.ignoresSafeArea()
 
             content
+        }
+        .overlay(alignment: .topLeading) {
+            if case .ready = loader.state(for: attachment) {
+                saveButton
+            }
         }
         .overlay(alignment: .topTrailing) {
             Button {
@@ -39,6 +58,66 @@ struct MediaViewerScreen: View {
         .statusBarHidden()
         .task {
             loader.load(attachment, in: conversationID)
+        }
+        .alert(
+            (saveState.failedError)?.errorDescription ?? "",
+            isPresented: .init(
+                get: { saveState.failedError != nil },
+                set: { if !$0 { saveState = .idle } }
+            ),
+            presenting: saveState.failedError
+        ) { _ in
+            Button(String(localized: "OK")) { saveState = .idle }
+        } message: { error in
+            if let suggestion = error.recoverySuggestion {
+                Text(suggestion)
+            }
+        }
+    }
+
+    private var saveButton: some View {
+        Button {
+            saveCurrentMedia()
+        } label: {
+            Group {
+                switch saveState {
+                case .saving:
+                    ProgressView()
+                        .tint(.white)
+                case .saved:
+                    Image(systemName: "checkmark.circle.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .white.opacity(0.25))
+                default:
+                    Image(systemName: "square.and.arrow.down.circle.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .white.opacity(0.25))
+                }
+            }
+            .font(.largeTitle)
+        }
+        .disabled(saveState == .saving)
+        .padding()
+        .accessibilityLabel(
+            attachment.kind == .image
+                ? String(localized: "写真を保存")
+                : String(localized: "動画を保存")
+        )
+    }
+
+    /// 表示中の本体を「写真」アプリへ保存する.
+    private func saveCurrentMedia() {
+        guard case .ready(let url) = loader.state(for: attachment) else { return }
+        saveState = .saving
+        Task {
+            do {
+                try await PhotoLibraryExporter.save(fileAt: url, kind: attachment.kind)
+                saveState = .saved
+                try? await Task.sleep(for: .seconds(1.5))
+                if saveState == .saved { saveState = .idle }
+            } catch {
+                saveState = .failed(AppError.wrap(error))
+            }
         }
     }
 

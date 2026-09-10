@@ -148,12 +148,24 @@ private struct MainSplitView: View {
         .fullScreenCover(isPresented: $isShowingBoard) {
             BoardView()
         }
-        .onChange(of: store.pendingNotificationConversationID) { _, pending in
-            // 通知をタップして指定されたチャットを開く.
-            guard let pending else { return }
-            store.pendingNotificationConversationID = nil
-            Task { await store.openConversation(pending) }
+        // アプリを閉じた状態で通知をタップした場合, この画面(MainSplitView)が
+        // まだ画面に無いうちに `pendingNotificationConversationID` が
+        // セットされていることがある. `onChange` は「表示された後の変化」にしか
+        // 反応しないため, それだけでは初回分を取りこぼす. 表示された直後にも
+        // 一度確認する.
+        .task {
+            await openPendingNotificationConversationIfNeeded()
         }
+        .onChange(of: store.pendingNotificationConversationID) { _, _ in
+            Task { await openPendingNotificationConversationIfNeeded() }
+        }
+    }
+
+    /// 通知タップで指定されたチャットを開く.
+    private func openPendingNotificationConversationIfNeeded() async {
+        guard let pending = environment.store.pendingNotificationConversationID else { return }
+        environment.store.pendingNotificationConversationID = nil
+        await environment.store.openConversation(pending)
     }
 }
 
