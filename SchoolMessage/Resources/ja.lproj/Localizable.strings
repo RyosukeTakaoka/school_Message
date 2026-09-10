@@ -8,3 +8,8 @@
 
 "PUSH_NEW_MESSAGE_TITLE" = "新しいメッセージ";
 "PUSH_NEW_MESSAGE_BODY" = "%@ さんからメッセージが届きました";
+
+/* 掲示板は暗号化していないため, 本文をそのまま使わず定型文にしている
+   (誰が書いたかまでは出さない). */
+"PUSH_NEW_BOARD_POST_TITLE" = "掲示板";
+"PUSH_NEW_BOARD_POST_BODY" = "新しい書き込みがあります";

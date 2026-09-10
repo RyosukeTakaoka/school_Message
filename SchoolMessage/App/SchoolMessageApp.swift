@@ -21,9 +21,14 @@ struct SchoolMessageApp: App {
                     guard agreed else { return }
                     Task { await startIfConsented() }
                 }
-                .onChange(of: environment.store.myProfile) { _, _ in
+                .onChange(of: environment.store.myProfile) { _, profile in
                     // 名前が決まってから電波を出す(名前の無い名刺は相手側で捨てられる).
                     environment.streetPass.refresh()
+                    // サインインが完了した(= プロフィールが読めた)ところで,
+                    // 掲示板の通知をオンにしている利用者のために購読を作り直す.
+                    if profile != nil {
+                        Task { await environment.pushService.configureBoardSubscriptionIfNeeded() }
+                    }
                 }
                 .onChange(of: demoTrigger.isRequested) { _, requested in
                     guard requested else { return }

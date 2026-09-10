@@ -144,7 +144,7 @@ final class PushNotificationService: NSObject {
     func requestAuthorizationAndRegister() async {
         UNUserNotificationCenter.current().delegate = self
 
-        guard preferences.isEnabled else { return }
+        guard preferences.isAnyCategoryEnabled else { return }
 
         do {
             let granted = try await UNUserNotificationCenter.current()
@@ -160,6 +160,41 @@ final class PushNotificationService: NSObject {
 
         // サイレント通知(content-available)の受信自体は許可に関係なく必要.
         UIApplication.shared.registerForRemoteNotifications()
+    }
+
+    // MARK: - 掲示板の通知
+
+    /// サインイン直後に呼ぶ. 既に「掲示板」の通知をオンにしている利用者のために,
+    /// 購読を作り直す(サーバ側の購読が何らかの理由で消えていても復旧できるように,
+    /// 毎回の起動で呼んでよい設計にしてある).
+    func configureBoardSubscriptionIfNeeded() async {
+        guard preferences.boardEnabled else { return }
+        guard let store, store.phase == .ready else { return }
+        do {
+            try await store.backend.configureBoardSubscription()
+        } catch {
+            Log.push.notice(
+                "failed to configure board subscription: \(AppError.wrap(error).localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    /// 設定画面で「掲示板」の通知トグルを切り替えたときに呼ぶ.
+    /// トグルの状態はここで保存し, サーバ側の購読の作成・削除も同時に行う.
+    func setBoardNotificationsEnabled(_ enabled: Bool) async {
+        preferences.boardEnabled = enabled
+        guard let store, store.phase == .ready else { return }
+        do {
+            if enabled {
+                try await store.backend.configureBoardSubscription()
+            } else {
+                try await store.backend.removeBoardSubscription()
+            }
+        } catch {
+            Log.push.notice(
+                "failed to update board subscription: \(AppError.wrap(error).localizedDescription, privacy: .public)"
+            )
+        }
     }
 
     // MARK: - 受信
@@ -182,7 +217,7 @@ final class PushNotificationService: NSObject {
         // 前面表示中の会話については, 通知を出さずに画面へ反映するだけにする.
         if let conversationID,
            conversationID != store.selectedConversationID,
-           preferences.isEnabled,
+           preferences.messagesEnabled,
            let latest = store.messagesByConversation[conversationID]?.last,
            latest.senderID != store.currentUserID {
             await presentLocalNotification(for: latest, in: conversationID, store: store)

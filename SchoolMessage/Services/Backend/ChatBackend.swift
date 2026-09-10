@@ -125,6 +125,12 @@ protocol ChatBackend: Sendable {
     /// スレッドに書き込む.
     func createBoardPost(in threadID: ThreadID, body: String) async throws -> BoardPost
 
+    /// 掲示板への新着通知を受け取れるようにする(冪等). 通知の設定でオンにしたときに呼ぶ.
+    func configureBoardSubscription() async throws
+
+    /// 掲示板への新着通知を止める. 通知の設定でオフにしたときに呼ぶ.
+    func removeBoardSubscription() async throws
+
     // MARK: メディア
 
     /// 添付の本体を復号してローカルにダウンロードし, その URL を返す.
