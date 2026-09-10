@@ -30,6 +30,8 @@ enum AppError: LocalizedError, Equatable {
     case unsupportedMedia
     case mediaProcessingFailed
     case videoTooLong(limitSeconds: Int)
+    case photoLibraryAccessDenied
+    case mediaSaveFailed
 
     // MARK: その他
     case underlying(String)
@@ -70,6 +72,10 @@ enum AppError: LocalizedError, Equatable {
             String(localized: "写真・動画を準備できませんでした")
         case .videoTooLong(let limit):
             String(localized: "動画は \(limit) 秒までです")
+        case .photoLibraryAccessDenied:
+            String(localized: "「写真」への保存が許可されていません")
+        case .mediaSaveFailed:
+            String(localized: "保存できませんでした")
         case .underlying(let message):
             message
         }
@@ -103,6 +109,10 @@ enum AppError: LocalizedError, Equatable {
             return String(localized: "短く切り出すか、別のファイルを選んでください")
         case .unsupportedMedia, .mediaProcessingFailed:
             return String(localized: "別の写真・動画を選んでください")
+        case .photoLibraryAccessDenied:
+            return String(localized: "「設定」→「School Message」→「写真」から許可してください")
+        case .mediaSaveFailed:
+            return String(localized: "もう一度お試しください")
         case .notAParticipant, .senderMismatch, .underlying:
             return nil
         }
@@ -117,6 +127,7 @@ enum AppError: LocalizedError, Equatable {
              .handleAlreadyTaken, .quotaExceeded, .notAParticipant, .senderMismatch,
              .missingEncryptionKey, .decryptionFailed, .recipientHasNoPublicKey,
              .mediaTooLarge, .unsupportedMedia, .mediaProcessingFailed, .videoTooLong,
+             .photoLibraryAccessDenied, .mediaSaveFailed,
              .underlying:
             false
         }

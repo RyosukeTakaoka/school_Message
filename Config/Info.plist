@@ -27,6 +27,8 @@
 	     審査で必須であると同時に, ユーザに「なぜ求められているか」を日本語で伝える. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>友達に送る写真や動画を選ぶために使います。選んだもの以外はアプリから見えません。</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>チャットで受け取った写真や動画を「写真」アプリに保存するために使います。</string>
 	<key>NSCameraUsageDescription</key>
 	<string>その場で写真や動画を撮ってチャットに送るために使います。</string>
 	<key>NSMicrophoneUsageDescription</key>

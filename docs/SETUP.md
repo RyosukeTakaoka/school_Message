@@ -135,19 +135,10 @@ Xcode 側でコンテナ名を選び直すだけで揃います。
 
 ## 公開前にやること（プライバシーポリシー・利用規約）
 
-規約はアプリ内にも実装されていますが、**現在は同意画面を無効にしています**
-（`AppConstants.Legal.requiresConsent = false`）。身内・友人だけで使っている
-段階では、以下の手順（App Store Connect 側の準備）を済ませなくても
-TestFlight に出せるようにするためです。文書自体は削除しておらず、
-プロフィール画面の「規約」からいつでも読めます。
-
-**配布先を広げる（学校の生徒全体、一般公開など）ときは、次の 2 手順を行ってください。**
-
-1. 下記の手順（`〔 〕` の記入、URL の公開、App のプライバシー申告）を済ませる。
-2. `SchoolMessage/App/AppConstants.swift` の `Legal.requiresConsent` を
-   `true` に変える。これだけで、次回起動時から同意画面が出るようになります
-   （同意するまでアプリを使えず、同意前は iCloud への接続も行いません）。
-   同意後はプロフィール画面の「規約」からいつでも読み返せます。
+**同意画面は有効化済みです**（`AppConstants.Legal.requiresConsent = true`）。
+開発者名・連絡先は Takaoka Ryosuke / ryosuketaka0510@gmail.com で
+`docs/PRIVACY_POLICY.md` / `docs/TERMS_OF_SERVICE.md` /
+`SchoolMessage/Features/Legal/LegalText.swift` の 3 か所に記入済みです。
 
 > **文書は 2 か所にあります。両方を必ず同時に更新してください。**
 >
@@ -159,7 +150,12 @@ TestFlight に出せるようにするためです。文書自体は削除して
 > 内容を実質的に変更したら、`ConsentStore.currentVersion` の日付も上げてください。
 > 上げると、既に同意済みの利用者にも同意画面がもう一度表示されます。
 
-1. 上記 2 か所の `〔 〕` で囲んだ箇所（開発者名・連絡先・管轄裁判所）をすべて記入する。
+**ただし、次はまだ未対応です。配布先を広げる（学校の生徒全体、一般公開など）前に済ませてください。**
+
+1. **管轄裁判所の記入。** `docs/TERMS_OF_SERVICE.md` / `LegalText.swift` の
+   第21条に残っている `〔開発者の住所地を管轄する地方裁判所〕` を、開発者の
+   住所地を管轄する地方裁判所名に差し替える（開発者名・連絡先とは異なり、
+   住所の申告が必要なため未記入のままにしてあります）。
 2. **公開 URL を用意する。** App Store Connect はプライバシーポリシーの URL を必須で求めます。
    最も手軽なのは GitHub Pages です（リポジトリの Settings → Pages → Source を
    `main` / `docs` にすると `https://<ユーザ名>.github.io/school_Message/PRIVACY_POLICY.html`

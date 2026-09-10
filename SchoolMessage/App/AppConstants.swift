@@ -10,16 +10,16 @@ enum AppConstants {
     enum Legal {
         /// 起動時に利用規約・プライバシーポリシーへの同意を要求するか.
         ///
-        /// 友人・知人など身内だけで使っている段階では, App Store Connect 側の
-        /// 準備(プライバシーポリシーの公開 URL, 「App のプライバシー」申告,
-        /// 開発者名・連絡先の記入)を済ませなくても TestFlight に出せるよう,
-        /// 既定で無効にしている.
+        /// 開発者名・連絡先の記入が済んだため有効にしている. 同意するまで
+        /// アプリは使えず, 同意前は iCloud への接続も行わない
+        /// (`RootView` → `ConsentGateView`).
         ///
-        /// 本文自体は `LegalText.swift` / `docs/PRIVACY_POLICY.md` /
-        /// `docs/TERMS_OF_SERVICE.md` に残したままなので, 配布先を広げる
-        /// (学校の生徒全体, 一般公開など)タイミングで `true` に戻すだけでよい.
-        /// その際は `docs/SETUP.md` の「公開前にやること」の手順を先に行うこと.
-        static let requiresConsent = false
+        /// 本文は `LegalText.swift`(アプリ内表示用)と
+        /// `docs/PRIVACY_POLICY.md` / `docs/TERMS_OF_SERVICE.md`(Web 公開用)
+        /// に同じ内容を持つ. なお App Store Connect 側の準備
+        /// (プライバシーポリシーの公開 URL, 「App のプライバシー」申告)は
+        /// まだ別途必要. 詳細は `docs/SETUP.md` の「公開前にやること」を参照.
+        static let requiresConsent = true
     }
 
     enum Layout {
