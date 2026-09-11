@@ -53,20 +53,26 @@ struct ColorBattleRound: Codable, Sendable, Hashable {
 
 /// 色勝負の状態.
 ///
-/// ## 隠し札を持たない理由
-/// 対戦の状態はメッセージとして相手にも丸ごと渡る. 手札を伏せたことにしても,
-/// 実際には両者の端末に届いてしまうので「伏せている」というのは嘘になる.
-/// commit-reveal のような仕掛けを足せば本当に伏せられるが, 1 手ごとに
-/// 往復が増えて, チャットに乗せる軽い遊びとしては重すぎる.
+/// ## 手札を隠す仕組み
+/// 対戦の状態はメッセージとして相手にも丸ごと渡るため, 単に暗号化するだけでは
+/// 「両者が持つ会話鍵」で相手も開けてしまい, 手札を隠したことにならない.
 ///
-/// そこで**手札は両者に見えている**前提のルールにした.
+/// そこで, 各プレイヤーの手札は**本人の公開鍵宛てにもう一段封をする**
+/// (`CryptoService.sealToPublicKey` / `openSealedToSelf`). 会話鍵での暗号化は
+/// 今まで通り(第三者から中身を隠す), その内側で, 手札のフィールドだけは
+/// 本人の秘密鍵でしか開けない状態で運ぶ. 相手の端末には「開けない暗号文」が
+/// 届くだけで, 中身を復元する手立てがない.
+///
+/// 手札の枚数(`firstHandCount` / `secondHandCount`)だけは暗号化していない.
+/// 何枚残っているかは対戦の進行そのものから分かる情報で, 隠す意味が無いため,
+/// 手札を開けなくても対戦が終わったかどうかを両者が判定できるようにしている.
+///
 /// - 先に出す人(リード)は, 相手の応じ方を知らずに出す
 /// - 後から出す人は, 相手の札を見てから出す
 /// - リードは 1 回戦ごとに交代し, 引き分けはリードの勝ちとする
 ///
-/// 情報が全部見えていても「どの札をどこで使うか」の読み合いが残るので,
-/// 遊びとして成立する. しかも状態が全部メッセージに乗っているため,
-/// 端末を変えても, アプリを入れ直しても, 途中から続きを遊べる.
+/// 状態は今まで通りすべてメッセージに乗っているため, 端末を変えても,
+/// アプリを入れ直しても, 本人の秘密鍵さえあれば途中から続きを遊べる.
 struct ColorBattleSnapshot: Hashable, Sendable, Codable {
 
     /// 1 人に配る枚数(= 回戦数).
@@ -79,8 +85,12 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
     /// 第 1 回戦で先に出す人(対戦を始めた人).
     var firstPlayerID: UserID
     var secondPlayerID: UserID
-    var firstHand: [ColorCard]
-    var secondHand: [ColorCard]
+    /// 本人の公開鍵宛てに封じた手札. 本人以外は開けない.
+    var firstHandSealed: WrappedConversationKey
+    var secondHandSealed: WrappedConversationKey
+    /// 手札の残り枚数(暗号化しない. 対戦の進行から分かる情報のため).
+    var firstHandCount: Int
+    var secondHandCount: Int
     var firstScore: Int
     var secondScore: Int
     /// いま進行中の回戦(1 から始まる).
@@ -97,7 +107,14 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
     ///
     /// 山札は `gameID` から決まる並びで切る. 乱数の種を対戦の識別子にすることで,
     /// 誰の端末で組み立てても同じ配りになり, 「配り直し」で有利にすることもできない.
-    static func new(first: UserID, second: UserID) -> ColorBattleSnapshot {
+    /// 配った手札はその場でそれぞれの公開鍵宛てに封じるため, crypto アクセスが要る.
+    static func new(
+        first: UserID,
+        second: UserID,
+        firstPublicKey: Data,
+        secondPublicKey: Data,
+        crypto: CryptoService
+    ) async throws -> ColorBattleSnapshot {
         var deck: [ColorCard] = []
         for color in CardColor.allCases {
             for number in numbers {
@@ -108,12 +125,24 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
         var generator = SeededGenerator(seed: Self.hash(gameID))
         deck.shuffle(using: &generator)
 
+        let firstHand = Array(deck.prefix(handSize)).sortedForDisplay()
+        let secondHand = Array(deck.dropFirst(handSize).prefix(handSize)).sortedForDisplay()
+
+        let firstSealed = try await crypto.sealToPublicKey(
+            JSONEncoder().encode(firstHand), recipientPublicKey: firstPublicKey
+        )
+        let secondSealed = try await crypto.sealToPublicKey(
+            JSONEncoder().encode(secondHand), recipientPublicKey: secondPublicKey
+        )
+
         return ColorBattleSnapshot(
             gameID: gameID,
             firstPlayerID: first,
             secondPlayerID: second,
-            firstHand: Array(deck.prefix(handSize)).sortedForDisplay(),
-            secondHand: Array(deck.dropFirst(handSize).prefix(handSize)).sortedForDisplay(),
+            firstHandSealed: firstSealed,
+            secondHandSealed: secondSealed,
+            firstHandCount: firstHand.count,
+            secondHandCount: secondHand.count,
             firstScore: 0,
             secondScore: 0,
             round: 1,
@@ -160,8 +189,28 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
         pendingLeadCard == nil && leaderID == userID
     }
 
-    func hand(for userID: UserID) -> [ColorCard] {
-        userID == firstPlayerID ? firstHand : (userID == secondPlayerID ? secondHand : [])
+    /// 手札の残り枚数(中身は本人にしか分からない).
+    func handCount(for userID: UserID) -> Int {
+        userID == firstPlayerID ? firstHandCount : (userID == secondPlayerID ? secondHandCount : 0)
+    }
+
+    /// 自分の手札を開ける. 本人の秘密鍵でしか開けないため, 引数無しで
+    /// 「いま signed in している利用者」の分だけを対象にする設計にしている
+    /// (`userID` を引数に取ると, 誰の分でも開けるかのように誤解しやすいため).
+    ///
+    /// `userID` はこの対戦の当事者(`firstPlayerID` / `secondPlayerID`)の
+    /// どちらかである必要がある. それ以外を渡した場合は空配列を返す.
+    func decryptedHand(for userID: UserID, crypto: CryptoService) async throws -> [ColorCard] {
+        let sealed: WrappedConversationKey
+        if userID == firstPlayerID {
+            sealed = firstHandSealed
+        } else if userID == secondPlayerID {
+            sealed = secondHandSealed
+        } else {
+            return []
+        }
+        let data = try await crypto.openSealedToSelf(sealed)
+        return try JSONDecoder().decode([ColorCard].self, from: data)
     }
 
     func score(for userID: UserID) -> Int {
@@ -199,11 +248,31 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
     }
 
     /// 札を 1 枚出した次の状態を返す. 出せない場面・持っていない札なら `nil`.
-    func playing(_ card: ColorCard, by userID: UserID) -> ColorBattleSnapshot? {
-        guard isTurn(of: userID), hand(for: userID).contains(card) else { return nil }
+    ///
+    /// 自分の手札はここで一旦復号し, 出した札を除いてから自分の公開鍵宛てに
+    /// 封じ直す. 相手の手札(封じられたもう一方)には一切触れない
+    /// (そもそも復号する手立てが無い).
+    func playing(_ card: ColorCard, by userID: UserID, crypto: CryptoService) async throws -> ColorBattleSnapshot? {
+        guard isTurn(of: userID) else { return nil }
+        var myHand = try await decryptedHand(for: userID, crypto: crypto)
+        guard let index = myHand.firstIndex(of: card) else { return nil }
+        myHand.remove(at: index)
+
+        let myPublicKey = try await crypto.identityPublicKeyData()
+        let resealed = try await crypto.sealToPublicKey(
+            JSONEncoder().encode(myHand), recipientPublicKey: myPublicKey
+        )
 
         var next = self
-        next.removeCard(card, from: userID)
+        if userID == firstPlayerID {
+            next.firstHandSealed = resealed
+            next.firstHandCount = myHand.count
+        } else if userID == secondPlayerID {
+            next.secondHandSealed = resealed
+            next.secondHandCount = myHand.count
+        } else {
+            return nil
+        }
 
         guard let lead = pendingLeadCard else {
             next.pendingLeadCard = card
@@ -227,16 +296,8 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
         )
         next.pendingLeadCard = nil
         next.round = round + 1
-        next.isFinished = next.firstHand.isEmpty && next.secondHand.isEmpty
+        next.isFinished = next.firstHandCount == 0 && next.secondHandCount == 0
         return next
-    }
-
-    private mutating func removeCard(_ card: ColorCard, from userID: UserID) {
-        if userID == firstPlayerID, let index = firstHand.firstIndex(of: card) {
-            firstHand.remove(at: index)
-        } else if userID == secondPlayerID, let index = secondHand.firstIndex(of: card) {
-            secondHand.remove(at: index)
-        }
     }
 
     private mutating func addScore(_ points: Int, to userID: UserID) {

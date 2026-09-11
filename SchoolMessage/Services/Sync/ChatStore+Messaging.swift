@@ -215,6 +215,184 @@ extension ChatStore {
             .content.game
     }
 
+    /// 色勝負を始める.
+    ///
+    /// 配った手札は, 自分の分は自分の公開鍵宛てに, 相手の分は相手の公開鍵宛てに
+    /// それぞれ封じてから 1 通のメッセージにする(`ColorBattleSnapshot` の
+    /// コメント参照). どちらの公開鍵も無ければ(未登録の相手など)始められない.
+    func startColorBattle(with opponent: UserID, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let myProfile,
+              let opponentProfile = profilesByID[opponent],
+              let myPublicKey = myProfile.publicKeyData,
+              let opponentPublicKey = opponentProfile.publicKeyData
+        else {
+            banner = .recipientHasNoPublicKey(displayName: profilesByID[opponent]?.displayName ?? String(localized: "相手"))
+            return
+        }
+        do {
+            let snapshot = try await ColorBattleSnapshot.new(
+                first: me,
+                second: opponent,
+                firstPublicKey: myPublicKey,
+                secondPublicKey: opponentPublicKey,
+                crypto: crypto
+            )
+            await sendGameMove(.colorBattle(snapshot), in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 色勝負で 1 枚出す.
+    ///
+    /// 自分の手札を復号し, 出した札を除いてから自分の公開鍵宛てに封じ直した
+    /// 次の状態を送る. 出せない場面や持っていない札なら何もしない.
+    func playColorBattleCard(_ card: ColorCard, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .colorBattle, in: conversationID)?.colorBattle
+        else { return }
+        do {
+            guard let next = try await snapshot.playing(card, by: me, crypto: crypto) else { return }
+            await sendGameMove(.colorBattle(next), in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 自分の色勝負の手札を復号する(画面表示用). 相手の手札はそもそも
+    /// 復号する手立てが無いため, 常に「自分の分」だけを返す.
+    func decryptedColorBattleHand(in conversationID: ConversationID) async -> [ColorCard] {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .colorBattle, in: conversationID)?.colorBattle
+        else { return [] }
+        return (try? await snapshot.decryptedHand(for: me, crypto: crypto)) ?? []
+    }
+
+    // MARK: - 大富豪(グループ)
+
+    /// 参加者を募る(ロビーを作る). 自分が募集した人(ホスト)になる.
+    func createDaifugoLobby(in conversationID: ConversationID) async {
+        guard let me = currentUserID else { return }
+        await sendGameMove(.daifugo(.newLobby(hostID: me)), in: conversationID)
+    }
+
+    /// ロビーに参加する.
+    func joinDaifugoLobby(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
+              case .lobby(var lobby) = snapshot.phase,
+              !lobby.joinedPlayerIDs.contains(me)
+        else { return }
+        lobby.joinedPlayerIDs.append(me)
+        var next = snapshot
+        next.phase = .lobby(lobby)
+        await sendGameMove(.daifugo(next), in: conversationID)
+    }
+
+    /// ロビーから抜ける(参加を取り消す). ホストが抜けた場合はロビーごと
+    /// 取りやめにする(仕切り直してもらう).
+    func leaveDaifugoLobby(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
+              case .lobby(var lobby) = snapshot.phase,
+              lobby.joinedPlayerIDs.contains(me)
+        else { return }
+        guard me != snapshot.hostID else {
+            banner = .underlying(String(localized: "募集した人は取りやめられません。参加者に声をかけてください"))
+            return
+        }
+        lobby.joinedPlayerIDs.removeAll { $0 == me }
+        var next = snapshot
+        next.phase = .lobby(lobby)
+        await sendGameMove(.daifugo(next), in: conversationID)
+    }
+
+    /// 対戦を開始する(ホストのみ). 参加者全員に手札を配り, 全員の公開鍵
+    /// 宛てにそれぞれ封じる.
+    func startDaifugoRound(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
+              case .lobby(let lobby) = snapshot.phase,
+              me == snapshot.hostID,
+              lobby.joinedPlayerIDs.count >= DaifugoSnapshot.Lobby.minimumPlayers
+        else { return }
+
+        var publicKeys: [UserID: Data] = [:]
+        for playerID in lobby.joinedPlayerIDs {
+            guard let key = profilesByID[playerID]?.publicKeyData else {
+                banner = .recipientHasNoPublicKey(displayName: profilesByID[playerID]?.displayName ?? String(localized: "参加者"))
+                return
+            }
+            publicKeys[playerID] = key
+        }
+
+        do {
+            guard let round = try await DaifugoSnapshot.Round.start(
+                gameID: snapshot.gameID,
+                seating: lobby.joinedPlayerIDs,
+                publicKeys: publicKeys,
+                crypto: crypto
+            ) else { return }
+            var next = snapshot
+            next.phase = .round(round)
+            await sendGameMove(.daifugo(next), in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 大富豪で札を出す. `extraCard` は 7わたしで渡す札, または 10捨てで
+    /// 捨てる札(出した数字が 7 か 10 かで意味が変わる).
+    func playDaifugoCards(
+        _ cards: [PlayingCard],
+        extraCard: PlayingCard? = nil,
+        giveTo giveRecipientID: UserID? = nil,
+        in conversationID: ConversationID
+    ) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
+              case .round(let round) = snapshot.phase
+        else { return }
+        let giveRecipientPublicKey = giveRecipientID.flatMap { profilesByID[$0]?.publicKeyData }
+        do {
+            guard let nextRound = try await round.playing(
+                cards,
+                by: me,
+                extraCard: extraCard,
+                giveRecipientID: giveRecipientID,
+                giveRecipientPublicKey: giveRecipientPublicKey,
+                crypto: crypto
+            ) else { return }
+            var next = snapshot
+            next.phase = .round(nextRound)
+            await sendGameMove(.daifugo(next), in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 大富豪でパスする.
+    func passDaifugo(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
+              case .round(let round) = snapshot.phase,
+              let nextRound = round.passing(by: me)
+        else { return }
+        var next = snapshot
+        next.phase = .round(nextRound)
+        await sendGameMove(.daifugo(next), in: conversationID)
+    }
+
+    /// 自分の大富豪の手札を復号する(画面表示用).
+    func decryptedDaifugoHand(in conversationID: ConversationID) async -> [PlayingCard] {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
+              case .round(let round) = snapshot.phase
+        else { return [] }
+        return (try? await round.decryptedHand(for: me, crypto: crypto)) ?? []
+    }
+
     /// 対戦を始める / 1 手を進める.
     ///
     /// その時点の状態をまるごと載せたメッセージを送るだけなので, 送信の仕組みは

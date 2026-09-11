@@ -19,11 +19,15 @@ enum GameSnapshot: Hashable, Sendable, Codable {
 
     case othello(OthelloSnapshot)
     case colorBattle(ColorBattleSnapshot)
+    /// グループでの大富豪. 他の 2 つと違い 3 人以上で遊ぶ
+    /// (`ChatDetailView` で会話の種類ごとにメニューを分けている).
+    case daifugo(DaifugoSnapshot)
 
     /// 遊びの種類.
     enum Kind: String, Hashable, Sendable, Codable, Identifiable, CaseIterable {
         case othello
         case colorBattle
+        case daifugo
 
         var id: String { rawValue }
 
@@ -31,6 +35,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             switch self {
             case .othello: String(localized: "オセロ")
             case .colorBattle: String(localized: "色勝負")
+            case .daifugo: String(localized: "大富豪")
             }
         }
 
@@ -38,6 +43,15 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             switch self {
             case .othello: "circle.righthalf.filled"
             case .colorBattle: "square.stack.3d.up"
+            case .daifugo: "suit.spade.fill"
+            }
+        }
+
+        /// 1 対 1(direct)向けか, グループ向けか.
+        var supportedConversationKinds: Set<ConversationKind> {
+            switch self {
+            case .othello, .colorBattle: [.direct]
+            case .daifugo: [.group]
             }
         }
     }
@@ -46,6 +60,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         switch self {
         case .othello: .othello
         case .colorBattle: .colorBattle
+        case .daifugo: .daifugo
         }
     }
 
@@ -54,6 +69,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         switch self {
         case .othello(let state): state.gameID
         case .colorBattle(let state): state.gameID
+        case .daifugo(let state): state.gameID
         }
     }
 
@@ -61,6 +77,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         switch self {
         case .othello(let state): state.isFinished
         case .colorBattle(let state): state.isFinished
+        case .daifugo(let state): state.isFinished
         }
     }
 
@@ -80,6 +97,11 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         if case .colorBattle(let state) = self { return state }
         return nil
     }
+
+    var daifugo: DaifugoSnapshot? {
+        if case .daifugo(let state) = self { return state }
+        return nil
+    }
 }
 
 // MARK: - 保存の形
@@ -89,6 +111,7 @@ extension GameSnapshot {
     private enum CodingKeys: String, CodingKey {
         case othello
         case colorBattle
+        case daifugo
     }
 
     /// 遊びが 1 種類しか無かった頃に送られたメッセージも読めるようにする.
@@ -107,6 +130,10 @@ extension GameSnapshot {
                 self = .colorBattle(state)
                 return
             }
+            if let state = try? container.decode(DaifugoSnapshot.self, forKey: .daifugo) {
+                self = .daifugo(state)
+                return
+            }
         }
         let legacy = try OthelloSnapshot(from: decoder)
         self = .othello(legacy)
@@ -117,6 +144,7 @@ extension GameSnapshot {
         switch self {
         case .othello(let state): try container.encode(state, forKey: .othello)
         case .colorBattle(let state): try container.encode(state, forKey: .colorBattle)
+        case .daifugo(let state): try container.encode(state, forKey: .daifugo)
         }
     }
 }

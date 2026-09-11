@@ -153,7 +153,13 @@ private struct MainSplitView: View {
         // セットされていることがある. `onChange` は「表示された後の変化」にしか
         // 反応しないため, それだけでは初回分を取りこぼす. 表示された直後にも
         // 一度確認する.
+        //
+        // ここだけ少し待ってから選択を反映しているのは, `NavigationSplitView` が
+        // 組み上がった直後(まだ最初のレイアウトが済んでいないタイミング)に
+        // 選択を変えると, 内部状態の不整合で落ちることがあるため
+        // (通知をタップして起動したときだけ再現していたクラッシュの対策).
         .task {
+            try? await Task.sleep(for: .milliseconds(300))
             await openPendingNotificationConversationIfNeeded()
         }
         .onChange(of: store.pendingNotificationConversationID) { _, _ in

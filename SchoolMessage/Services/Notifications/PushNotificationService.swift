@@ -299,30 +299,36 @@ extension PushNotificationService: UNUserNotificationCenterDelegate {
 
     /// アプリ表示中でも通知を出す.
     /// ただし, いま開いているチャットの通知は出さない(画面に既に見えているため).
-    nonisolated func userNotificationCenter(
+    ///
+    /// `nonisolated` を付けていない(このクラスは `@MainActor` なので,
+    /// 何も付けなければメインアクターに隔離される). 以前は `nonisolated` にした上で
+    /// 中身だけ `MainActor.run` で処理していたが, その形だと Swift が
+    /// UIKit 側(Objective-C)に渡す完了ハンドラの呼び出し自体がメインアクター上で
+    /// 行われる保証がなくなる. これが, 通知をタップして起動した直後に
+    /// `UIApplication` の状態復元(State Restoration)の内部処理と競合して
+    /// クラッシュしていた実際の原因だった(実機のクラッシュログで確認済み.
+    /// `_updateStateRestorationArchiveForBackgroundEvent` 内のアサーション失敗).
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         let userInfo = notification.request.content.userInfo
         let raw = userInfo[Self.conversationUserInfoKey] as? String
-        return await MainActor.run {
-            if let raw, ConversationID(raw) == self.store?.selectedConversationID {
-                return []
-            }
-            return [.banner, .sound, .badge]
+        if let raw, ConversationID(raw) == store?.selectedConversationID {
+            return []
         }
+        return [.banner, .sound, .badge]
     }
 
     /// 通知をタップした. 対象のチャットを開く.
-    nonisolated func userNotificationCenter(
+    /// メインアクターに隔離する理由は上の `willPresent` と同じ.
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
         guard let raw = userInfo[Self.conversationUserInfoKey] as? String else { return }
-        await MainActor.run {
-            // 開くべきチャットをストアに伝える. 画面遷移は RootView が行う.
-            self.store?.pendingNotificationConversationID = ConversationID(raw)
-        }
+        // 開くべきチャットをストアに伝える. 画面遷移は RootView が行う.
+        store?.pendingNotificationConversationID = ConversationID(raw)
     }
 }

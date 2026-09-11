@@ -185,6 +185,68 @@ actor CryptoService {
         try? keychain.removeItem(forAccount: Account.conversationKey(conversationID))
     }
 
+    // MARK: - 公開鍵宛ての封緘(自分専用のデータを作るのにも使う)
+
+    /// 任意のバイト列を, 指定した公開鍵でしか開けない形に封緘する.
+    ///
+    /// `wrap` は会話鍵(`SymmetricKey`)専用だが, こちらは汎用のバイト列向け.
+    /// 「自分の公開鍵宛てに封じる」ことで, 自分以外(同じ会話の相手を含む)には
+    /// 開けないデータを作れる. 色勝負で「自分の手札は自分にしか見えない」を
+    /// 実現するのに使う(会話鍵は参加者全員が持つため, 会話鍵での暗号化だけでは
+    /// 特定の 1 人にだけ見せる, ということができない).
+    func sealToPublicKey(_ data: Data, recipientPublicKey publicKeyData: Data) throws -> WrappedConversationKey {
+        let recipientKey: Curve25519.KeyAgreement.PublicKey
+        do {
+            recipientKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: publicKeyData)
+        } catch {
+            throw CryptoError.invalidPublicKey
+        }
+
+        let ephemeral = Curve25519.KeyAgreement.PrivateKey()
+        let sharedSecret = try ephemeral.sharedSecretFromKeyAgreement(with: recipientKey)
+        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Self.keyWrapSalt,
+            sharedInfo: ephemeral.publicKey.rawRepresentation + publicKeyData,
+            outputByteCount: 32
+        )
+
+        guard let sealed = try? AES.GCM.seal(data, using: wrappingKey).combined else {
+            throw CryptoError.sealFailed
+        }
+        return WrappedConversationKey(
+            ephemeralPublicKey: ephemeral.publicKey.rawRepresentation,
+            ciphertext: sealed
+        )
+    }
+
+    /// 自分の公開鍵宛てに `sealToPublicKey` で封じたバイト列を, 自分の秘密鍵で開ける.
+    func openSealedToSelf(_ wrapped: WrappedConversationKey) throws -> Data {
+        let identity = try identityKey()
+        let ephemeralPublic: Curve25519.KeyAgreement.PublicKey
+        do {
+            ephemeralPublic = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: wrapped.ephemeralPublicKey)
+        } catch {
+            throw CryptoError.invalidPublicKey
+        }
+
+        let sharedSecret = try identity.sharedSecretFromKeyAgreement(with: ephemeralPublic)
+        let wrappingKey = sharedSecret.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Self.keyWrapSalt,
+            sharedInfo: wrapped.ephemeralPublicKey + identity.publicKey.rawRepresentation,
+            outputByteCount: 32
+        )
+
+        guard
+            let box = try? AES.GCM.SealedBox(combined: wrapped.ciphertext),
+            let raw = try? AES.GCM.open(box, using: wrappingKey)
+        else {
+            throw CryptoError.openFailed
+        }
+        return raw
+    }
+
     // MARK: - ペイロードの暗号化
 
     func seal(_ data: Data, with key: SymmetricKey) throws -> Data {

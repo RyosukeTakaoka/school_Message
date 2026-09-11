@@ -19,7 +19,14 @@ struct MessageComposerView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var isPreparingAttachment = false
     @State private var isShowingCamera = false
+    @State private var composerHeight: CGFloat = AppConstants.Layout.composerMinHeight
     @FocusState private var isInputFocused: Bool
+
+    /// `@FocusState` はSwiftUI標準の入力欄にしか直接繋げられないため,
+    /// `UIViewRepresentable` 側には普通の `Binding<Bool>` として渡す.
+    private var isInputFocusedBinding: Binding<Bool> {
+        Binding(get: { isInputFocused }, set: { isInputFocused = $0 })
+    }
 
     /// 送信前の添付.
     private enum Draft: Equatable {
@@ -193,17 +200,21 @@ struct MessageComposerView: View {
                 .accessibilityLabel(String(localized: "撮影する"))
             }
 
-            TextField(String(localized: "メッセージを入力"), text: $text, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...5)
-                .focused($isInputFocused)
-                .submitLabel(.send)
-                // 外付けキーボードの Return で送れるようにする.
-                .onSubmit(send)
-                .padding(.horizontal, AppConstants.Layout.standardSpacing)
-                .padding(.vertical, 8)
-                .frame(minHeight: AppConstants.Layout.composerMinHeight)
-                .background(Palette.chatBackground, in: Capsule())
+            // 標準の `TextField` + `.onSubmit` ではなく `UITextView` を
+            // 直接使っているのは, 日本語入力の変換確定にも使う外付けキーボードの
+            // Return を, 変換中かどうかを見て正しく扱うため
+            // (`ComposerTextView` のコメント参照).
+            ComposerTextView(
+                text: $text,
+                placeholder: String(localized: "メッセージを入力"),
+                isFocused: isInputFocusedBinding,
+                height: $composerHeight,
+                minHeight: AppConstants.Layout.composerMinHeight,
+                maxHeight: AppConstants.Layout.composerMaxHeight,
+                onSubmit: send
+            )
+            .frame(height: composerHeight)
+            .background(Palette.chatBackground, in: Capsule())
 
             if isPreparingAttachment {
                 ProgressView()
@@ -300,5 +311,136 @@ enum VideoThumbnail {
         guard let result = try? await generator.image(at: time) else { return nil }
         return UIImage(cgImage: result.image)
             .jpegData(compressionQuality: MediaLimits.thumbnailCompressionQuality)
+    }
+}
+
+/// 入力欄本体. `TextField` の `.onSubmit` ではなく `UITextView` を直接使う.
+///
+/// ## なぜ標準の `TextField` を使わないか
+/// 外付けキーボードの Return で送信できるようにしているが, 日本語入力では
+/// 変換候補を確定するのにも Return を使う. `TextField` + `.onSubmit` は
+/// この 2 つを区別できず, **変換確定のつもりで押した Return が送信として
+/// 扱われ, まだ確定していなかった文字列が消える**ことがあった
+/// (`.onSubmit` が呼ばれた時点でまだ `text` に反映されておらず,
+/// 送信処理が入力欄を空にしてしまうため).
+///
+/// `UITextView` は `markedTextRange` で「変換中の未確定文字列があるか」を
+/// 取得できる. これを見て, 変換中の Return は確定だけに使わせ(送信しない),
+/// 確定し終えたあとの Return だけを送信として扱うようにする.
+struct ComposerTextView: UIViewRepresentable {
+
+    @Binding var text: String
+    let placeholder: String
+    var isFocused: Binding<Bool>
+    @Binding var height: CGFloat
+    let minHeight: CGFloat
+    let maxHeight: CGFloat
+    let onSubmit: () -> Void
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.adjustsFontForContentSizeCategory = true
+        textView.backgroundColor = .clear
+        textView.textContainerInset = UIEdgeInsets(
+            top: 8, left: AppConstants.Layout.standardSpacing,
+            bottom: 8, right: AppConstants.Layout.standardSpacing
+        )
+        textView.textContainer.lineFragmentPadding = 0
+        textView.isScrollEnabled = false
+        textView.text = text
+
+        let placeholderLabel = UILabel()
+        placeholderLabel.text = placeholder
+        placeholderLabel.font = textView.font
+        placeholderLabel.textColor = .placeholderText
+        placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+        placeholderLabel.isHidden = !text.isEmpty
+        textView.addSubview(placeholderLabel)
+        NSLayoutConstraint.activate([
+            placeholderLabel.topAnchor.constraint(
+                equalTo: textView.topAnchor, constant: textView.textContainerInset.top
+            ),
+            placeholderLabel.leadingAnchor.constraint(
+                equalTo: textView.leadingAnchor, constant: textView.textContainerInset.left
+            )
+        ])
+        context.coordinator.placeholderLabel = placeholderLabel
+
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        // `Coordinator` は使い回されるが, この構造体自体は描画のたびに
+        // 新しく作られる. コールバックが最新の(クロージャなど)値を見られるよう,
+        // 都度差し替える.
+        context.coordinator.parent = self
+
+        if uiView.text != text {
+            uiView.text = text
+        }
+        context.coordinator.placeholderLabel?.isHidden = !text.isEmpty
+
+        if isFocused.wrappedValue, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        } else if !isFocused.wrappedValue, uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+        }
+
+        recalculateHeight(uiView)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    /// 1〜5 行ぶんの高さの範囲で伸び縮みさせる. それを超えたら中で
+    /// スクロールする(それ以上ふくらませない).
+    private func recalculateHeight(_ textView: UITextView) {
+        let fitting = textView.sizeThatFits(
+            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+        )
+        let clamped = min(max(fitting.height, minHeight), maxHeight)
+        textView.isScrollEnabled = fitting.height > maxHeight
+        guard abs(height - clamped) > 0.5 else { return }
+        DispatchQueue.main.async { height = clamped }
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: ComposerTextView
+        weak var placeholderLabel: UILabel?
+
+        init(_ parent: ComposerTextView) {
+            self.parent = parent
+        }
+
+        /// Return が押された瞬間はここに来る. 変換中(未確定の文字列がある)
+        /// なら, ここでは何もせず true を返して, システムに変換確定を
+        /// 任せる. 確定済みの状態で押された Return だけを送信として扱う.
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText text: String
+        ) -> Bool {
+            guard text == "\n" else { return true }
+            guard textView.markedTextRange == nil else { return true }
+            parent.onSubmit()
+            return false
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            placeholderLabel?.isHidden = !textView.text.isEmpty
+            parent.recalculateHeight(textView)
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.isFocused.wrappedValue = true
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            parent.isFocused.wrappedValue = false
+        }
     }
 }

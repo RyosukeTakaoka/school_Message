@@ -12,6 +12,9 @@ struct ColorBattleGameView: View {
     let conversationID: ConversationID
 
     @State private var isSending = false
+    /// 復号済みの自分の手札. 相手の手札は復号する手立てが無いため持たない
+    /// (`opponentHandSection` は枚数だけを表示する).
+    @State private var myHand: [ColorCard] = []
 
     private var store: ChatStore { environment.store }
 
@@ -45,6 +48,11 @@ struct ColorBattleGameView: View {
                     ErrorBannerView(error: error) { store.setBanner(nil) }
                 }
             }
+        }
+        // 手札は暗号化されているため, 対戦の状態(=誰かが 1 手進めるたび)が
+        // 変わるたびに, 自分の分だけを復号し直す.
+        .task(id: snapshot) {
+            myHand = await store.decryptedColorBattleHand(in: conversationID)
         }
     }
 
@@ -230,9 +238,9 @@ struct ColorBattleGameView: View {
                 Text("相手の手札")
                     .font(.caption)
                     .foregroundStyle(Palette.subdued)
-                // 手札は伏せられない(状態がそのまま相手にも届く)ので, 隠さず見せる.
-                // 隠せているふりをするより, 見えている前提で読み合うほうが公平.
-                cardRow(snapshot.hand(for: opponent), trump: snapshot.trump, size: .small)
+                // 相手の手札は相手の公開鍵宛てに封じてあり, 復号する手立てが無い.
+                // 中身は見せず, 残り枚数だけを裏向きの札で示す.
+                faceDownCardRow(count: snapshot.handCount(for: opponent))
             }
         }
     }
@@ -243,12 +251,37 @@ struct ColorBattleGameView: View {
                 .font(.caption)
                 .foregroundStyle(Palette.subdued)
             let canPlay = snapshot.isTurn(of: me) && !isSending
-            cardRow(snapshot.hand(for: me), trump: snapshot.trump, size: .large) { card in
+            cardRow(myHand, trump: snapshot.trump, size: .large) { card in
                 guard canPlay else { return }
                 Task { await play(card) }
             }
             .opacity(canPlay ? 1 : 0.55)
         }
+    }
+
+    /// 相手の手札の代わりに出す, 中身の見えない札の並び(枚数だけ伝える).
+    private func faceDownCardRow(count: Int) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if count == 0 {
+                    Text("なし")
+                        .font(.caption)
+                        .foregroundStyle(Palette.subdued)
+                }
+                ForEach(0..<count, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Palette.subdued.opacity(0.3))
+                        .frame(width: ColorCardView.Size.small.width, height: ColorCardView.Size.small.height)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.black.opacity(0.15), lineWidth: 1)
+                        }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(localized: "相手の手札 残り\(count)枚"))
     }
 
     private func cardRow(
@@ -293,18 +326,17 @@ struct ColorBattleGameView: View {
     }
 
     private func startGame() async {
-        guard let me, let opponent = opponentID else { return }
+        guard let opponent = opponentID else { return }
         isSending = true
         defer { isSending = false }
         // 対戦を始めた人が第 1 回戦のリードになる.
-        await store.sendGameMove(.colorBattle(.new(first: me, second: opponent)), in: conversationID)
+        await store.startColorBattle(with: opponent, in: conversationID)
     }
 
     private func play(_ card: ColorCard) async {
-        guard let me, let snapshot, let next = snapshot.playing(card, by: me) else { return }
         isSending = true
         defer { isSending = false }
-        await store.sendGameMove(.colorBattle(next), in: conversationID)
+        await store.playColorBattleCard(card, in: conversationID)
     }
 }
 

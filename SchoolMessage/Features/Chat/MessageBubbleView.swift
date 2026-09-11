@@ -232,6 +232,7 @@ struct MessageBubbleView: View {
         switch snapshot {
         case .othello(let state): othelloStatusText(state)
         case .colorBattle(let state): colorBattleStatusText(state)
+        case .daifugo(let state): daifugoStatusText(state)
         }
     }
 
@@ -260,6 +261,21 @@ struct MessageBubbleView: View {
             return String(localized: "あなたの番 · \(score)")
         }
         return String(localized: "相手の番 · \(score)")
+    }
+
+    private func daifugoStatusText(_ state: DaifugoSnapshot) -> String {
+        switch state.phase {
+        case .lobby(let lobby):
+            return String(localized: "参加者募集中 · \(lobby.joinedPlayerIDs.count)人")
+        case .round(let round):
+            if round.isFinished {
+                return String(localized: "対戦終了")
+            }
+            if let me = store.currentUserID, round.isTurn(of: me) {
+                return String(localized: "あなたの番")
+            }
+            return String(localized: "\(store.displayName(for: round.currentPlayerID)) の番")
+        }
     }
 
     private func mediaBubble(_ attachment: MediaAttachment, showsPlayBadge: Bool) -> some View {
