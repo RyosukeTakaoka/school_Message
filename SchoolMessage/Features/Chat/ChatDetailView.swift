@@ -120,11 +120,15 @@ struct ChatDetailView: View {
             ToolbarItem(placement: .principal) {
                 header
             }
-            // 対戦は 1 対 1 のチャットに付随する遊びなので, グループには出さない.
-            if conversation.kind == .direct {
+            // 対戦の種類は会話の種類(1 対 1 かグループか)に応じて絞り込む
+            // (オセロ・色勝負は 1 対 1, 大富豪はグループ向け).
+            let availableGames = GameSnapshot.Kind.allCases.filter {
+                $0.supportedConversationKinds.contains(conversation.kind)
+            }
+            if !availableGames.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        ForEach(GameSnapshot.Kind.allCases) { kind in
+                        ForEach(availableGames) { kind in
                             Button {
                                 activeGame = kind
                             } label: {
@@ -153,6 +157,8 @@ struct ChatDetailView: View {
                 OthelloGameView(conversationID: conversation.id)
             case .colorBattle:
                 ColorBattleGameView(conversationID: conversation.id)
+            case .daifugo:
+                DaifugoGameView(conversationID: conversation.id)
             }
         }
         .fullScreenCover(item: $viewingMedia) { attachment in
