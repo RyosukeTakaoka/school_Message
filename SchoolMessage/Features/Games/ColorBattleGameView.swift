@@ -16,6 +16,16 @@ struct ColorBattleGameView: View {
     /// (`opponentHandSection` は枚数だけを表示する).
     @State private var myHand: [ColorCard] = []
 
+    // MARK: - 切り札の公開演出
+
+    /// 演出のもとになる, 決着したばかりの回戦(表示中はここに入る. 終われば nil).
+    @State private var revealingRound: ColorBattleRound?
+    @State private var isTrumpRevealedInOverlay = false
+    @State private var isWinnerRevealedInOverlay = false
+    /// 直近で演出を出した回戦番号(会話を開き直しただけで昔の結果を演出しないため).
+    @State private var lastAnimatedRoundNumber: Int?
+    @State private var hasInitializedReveal = false
+
     private var store: ChatStore { environment.store }
 
     private var snapshot: ColorBattleSnapshot? {
@@ -48,11 +58,142 @@ struct ColorBattleGameView: View {
                     ErrorBannerView(error: error) { store.setBanner(nil) }
                 }
             }
+            .overlay {
+                if let revealingRound, let me {
+                    revealOverlay(revealingRound, me: me)
+                        .transition(.opacity)
+                }
+            }
         }
         // 手札は暗号化されているため, 対戦の状態(=誰かが 1 手進めるたび)が
         // 変わるたびに, 自分の分だけを復号し直す.
         .task(id: snapshot) {
             myHand = await store.decryptedColorBattleHand(in: conversationID)
+        }
+        .onChange(of: snapshot?.lastRound) { _, newValue in
+            handleRoundResolved(newValue)
+        }
+    }
+
+    /// 回戦が決着したときの演出を出す.
+    ///
+    /// 切り札はゲーム開始時にもう全 8 回戦ぶん決まっている(`ColorBattleSnapshot.trump`
+    /// は `gameID` と回戦数だけから決まる決定的な値)が, 画面には「両者が札を
+    /// 出し終えるまで」あえて出さない. 読み合いの核はここにあるため.
+    private func handleRoundResolved(_ round: ColorBattleRound?) {
+        guard let round else { return }
+        guard hasInitializedReveal else {
+            // 会話を開いた直後(既にある結果を読み込んだだけ)では演出しない.
+            hasInitializedReveal = true
+            lastAnimatedRoundNumber = round.round
+            return
+        }
+        guard lastAnimatedRoundNumber != round.round else { return }
+        lastAnimatedRoundNumber = round.round
+        playReveal(round)
+    }
+
+    private func playReveal(_ round: ColorBattleRound) {
+        revealingRound = round
+        isTrumpRevealedInOverlay = false
+        isWinnerRevealedInOverlay = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(550))
+            guard revealingRound?.round == round.round else { return }
+            withAnimation(.spring(duration: 0.35)) { isTrumpRevealedInOverlay = true }
+
+            try? await Task.sleep(for: .milliseconds(650))
+            guard revealingRound?.round == round.round else { return }
+            withAnimation(.easeOut(duration: 0.25)) { isWinnerRevealedInOverlay = true }
+
+            try? await Task.sleep(for: .seconds(2))
+            guard revealingRound?.round == round.round else { return }
+            withAnimation(.easeOut(duration: 0.25)) { revealingRound = nil }
+        }
+    }
+
+    /// 決着の瞬間だけ出す, 一時的な演出画面.
+    private func revealOverlay(_ round: ColorBattleRound, me: UserID) -> some View {
+        ZStack {
+            Color.black.opacity(0.5).ignoresSafeArea()
+
+            VStack(spacing: AppConstants.Layout.standardSpacing) {
+                Text("第 \(round.round) 回戦")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+
+                HStack(spacing: AppConstants.Layout.standardSpacing) {
+                    revealCardColumn(
+                        round.leadCard,
+                        label: round.leaderID == me ? String(localized: "あなた") : opponentName(round.leaderID),
+                        trump: isTrumpRevealedInOverlay ? round.trump : nil
+                    )
+                    Text("対")
+                        .foregroundStyle(.white.opacity(0.7))
+                    revealCardColumn(
+                        round.followCard,
+                        label: round.followerID == me ? String(localized: "あなた") : opponentName(round.followerID),
+                        trump: isTrumpRevealedInOverlay ? round.trump : nil
+                    )
+                }
+
+                trumpBadge(round)
+
+                if isWinnerRevealedInOverlay {
+                    Text(round.winnerID == me
+                         ? String(localized: "あなたの勝ち +\(round.points)点")
+                         : String(localized: "\(opponentName(round.winnerID)) の勝ち +\(round.points)点"))
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
+            .padding(28)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // タップで早送りできるようにしておく(気持ちよさより, 遊びのテンポを優先したい人もいる).
+            withAnimation(.easeOut(duration: 0.2)) {
+                revealingRound = nil
+            }
+        }
+    }
+
+    private func revealCardColumn(_ card: ColorCard, label: String, trump: CardColor?) -> some View {
+        VStack(spacing: 4) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.8))
+            ColorCardView(card: card, isTrump: trump == card.color)
+        }
+    }
+
+    @ViewBuilder
+    private func trumpBadge(_ round: ColorBattleRound) -> some View {
+        if isTrumpRevealedInOverlay {
+            HStack(spacing: 6) {
+                Text("切り札")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.75))
+                Image(systemName: round.trump.symbolName)
+                Text(round.trump.title)
+                    .font(.title3.weight(.bold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(round.trump.tint, in: Capsule())
+            .transition(.scale.combined(with: .opacity))
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.circle.fill")
+                Text("切り札は伏せられています")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.85))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.15), in: Capsule())
         }
     }
 
@@ -74,7 +215,7 @@ struct ColorBattleGameView: View {
     }
 
     private static let rulesText = String(localized: """
-        毎回戦、切り札の色が決まります。切り札の色の札は、数字に関係なく切り札でない札に勝ちます。どちらも切り札か、どちらも切り札でないときは、数字の大きいほうが勝ちです。
+        毎回戦、切り札の色が決まりますが、両者が札を出し終えるまで何色かは分かりません。切り札の色の札は、数字に関係なく切り札でない札に勝ちます。どちらも切り札か、どちらも切り札でないときは、数字の大きいほうが勝ちです。
 
         先に出す人は相手の出方を知らずに出すので、同じ数字なら先に出した人の勝ちです。先に出す人は 1 回戦ごとに交代します。
 
@@ -140,20 +281,20 @@ struct ColorBattleGameView: View {
             Text("第 \(snapshot.round) 回戦 / \(ColorBattleSnapshot.handSize)")
                 .font(.headline)
             Spacer(minLength: 0)
+            // この回戦の切り札は, 両者が札を出し終えるまで画面には出さない
+            // (`ColorBattleSnapshot.trump` としてはもう決まっている値だが,
+            // あえて隠すことで「見えない切り札を読む」駆け引きにしている).
             HStack(spacing: 6) {
-                Text("切り札")
-                    .font(.caption)
-                    .foregroundStyle(Palette.subdued)
-                Image(systemName: snapshot.trump.symbolName)
-                    .foregroundStyle(snapshot.trump.tint)
-                Text(snapshot.trump.title)
+                Image(systemName: "questionmark.circle.fill")
+                Text("切り札は伏せられています")
                     .font(.subheadline.weight(.semibold))
             }
+            .foregroundStyle(Palette.subdued)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(Palette.incomingBubble, in: Capsule())
             .accessibilityElement(children: .combine)
-            .accessibilityLabel(String(localized: "切り札は\(snapshot.trump.title)"))
+            .accessibilityLabel(String(localized: "切り札は伏せられています"))
         }
     }
 
@@ -175,6 +316,9 @@ struct ColorBattleGameView: View {
     }
 
     /// いま場に出ている札.
+    ///
+    /// 切り札かどうかの縁取りは付けない. まだ両者が出し終えていない回戦で
+    /// 「縁取りがある = 切り札だ」と分かってしまうと, 切り札を隠している意味が無い.
     @ViewBuilder
     private func fieldSection(_ snapshot: ColorBattleSnapshot, me: UserID) -> some View {
         if let lead = snapshot.pendingLeadCard {
@@ -183,7 +327,7 @@ struct ColorBattleGameView: View {
                     Text(snapshot.leaderID == me ? String(localized: "あなたが出した札") : String(localized: "相手が出した札"))
                         .font(.caption)
                         .foregroundStyle(Palette.subdued)
-                    ColorCardView(card: lead, isTrump: lead.color == snapshot.trump)
+                    ColorCardView(card: lead, isTrump: false)
                 }
                 Spacer(minLength: 0)
             }
@@ -251,7 +395,9 @@ struct ColorBattleGameView: View {
                 .font(.caption)
                 .foregroundStyle(Palette.subdued)
             let canPlay = snapshot.isTurn(of: me) && !isSending
-            cardRow(myHand, trump: snapshot.trump, size: .large) { card in
+            // 切り札は自分の手札の中でも分からない(縁取りで教えてしまうと,
+            // 「自分のこの色が切り札かどうか」を読む楽しさが無くなる).
+            cardRow(myHand, trump: nil, size: .large) { card in
                 guard canPlay else { return }
                 Task { await play(card) }
             }
@@ -286,7 +432,7 @@ struct ColorBattleGameView: View {
 
     private func cardRow(
         _ cards: [ColorCard],
-        trump: CardColor,
+        trump: CardColor?,
         size: ColorCardView.Size,
         onTap: ((ColorCard) -> Void)? = nil
     ) -> some View {
