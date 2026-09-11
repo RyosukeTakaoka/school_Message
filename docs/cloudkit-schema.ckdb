@@ -104,7 +104,7 @@ DEFINE SCHEMA
         "___modifiedBy"   REFERENCE,
         "___recordID"     REFERENCE,
         conversation      REFERENCE QUERYABLE,
-        conversationKey   STRING QUERYABLE,
+        conversationKey   STRING QUERYABLE SEARCHABLE SORTABLE,
         mediaAsset        ASSET,
         participantIDs    LIST<STRING> QUERYABLE SEARCHABLE,
         payload           BYTES QUERYABLE SORTABLE,

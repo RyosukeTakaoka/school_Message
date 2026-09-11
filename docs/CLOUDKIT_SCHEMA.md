@@ -83,6 +83,7 @@ recordName: `convkey-<会話>-<受信者>-<作成者>`
 | フィールド | 型 | インデックス | 用途 |
 |---|---|---|---|
 | `conversation` | Reference | QUERYABLE | 対象の会話 |
+| `conversationKey` | String | QUERYABLE, SEARCHABLE, SORTABLE | 会話ごとの購読（`conversationKey == "<文字列>"`）の絞り込みに使う |
 | `senderID` | String | QUERYABLE | 送信者（`creatorUserRecordID` と突き合わせて検証） |
 | `sentAt` | Date/Time | **QUERYABLE, SORTABLE** | 並び替えとページングに必須 |
 | `payload` | Bytes | — | 暗号化した本文・メディアのメタデータ・返信先（引用） |
