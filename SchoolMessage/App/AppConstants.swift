@@ -7,6 +7,11 @@ enum AppConstants {
     /// CloudKit コンテナ識別子. Xcode の Signing & Capabilities と一致させること.
     static let cloudKitContainerIdentifier = "iCloud.com.schoolmessage.app"
 
+    /// TestFlight でこのアプリに参加できる招待リンク.
+    /// プロフィール画面の招待 QR コード・共有リンクに使う.
+    /// TestFlight の公開グループを作り直したら, ここも更新すること.
+    static let testFlightInviteURL = "https://testflight.apple.com/join/NC15vCNX"
+
     enum Legal {
         /// 起動時に利用規約・プライバシーポリシーへの同意を要求するか.
         ///

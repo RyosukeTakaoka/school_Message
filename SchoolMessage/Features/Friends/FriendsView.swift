@@ -13,6 +13,7 @@ struct FriendsView: View {
     @State private var results: [UserProfile] = []
     @State private var isSearching = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var isShowingInvite = false
 
     private var store: ChatStore { environment.store }
 
@@ -27,8 +28,19 @@ struct FriendsView: View {
                                 Text("検索中…").foregroundStyle(Palette.subdued)
                             }
                         } else if results.isEmpty {
-                            Text("見つかりませんでした")
-                                .foregroundStyle(Palette.subdued)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("見つかりませんでした")
+                                    .foregroundStyle(Palette.subdued)
+                                // ID が間違っている場合もあるが, 頻度として多いのは
+                                // 「相手がまだこのアプリを入れていない」ケースなので,
+                                // ここで招待の導線を出す.
+                                Button {
+                                    isShowingInvite = true
+                                } label: {
+                                    Label(String(localized: "アプリをまだ入れていない場合は招待する"), systemImage: "qrcode")
+                                }
+                                .font(.footnote)
+                            }
                         } else {
                             ForEach(results) { profile in
                                 searchResultRow(profile)
@@ -39,9 +51,17 @@ struct FriendsView: View {
 
                 Section(String(localized: "友達")) {
                     if store.friends.isEmpty {
-                        Text("まだ友達がいません。上の検索でユーザIDを入力して追加してください。")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("まだ友達がいません。上の検索でユーザIDを入力して追加してください。")
+                                .font(.footnote)
+                                .foregroundStyle(Palette.subdued)
+                            Button {
+                                isShowingInvite = true
+                            } label: {
+                                Label(String(localized: "友達をアプリに招待する"), systemImage: "qrcode")
+                            }
                             .font(.footnote)
-                            .foregroundStyle(Palette.subdued)
+                        }
                     } else {
                         ForEach(store.friends) { profile in
                             friendRow(profile)
@@ -73,6 +93,9 @@ struct FriendsView: View {
             }
             .task {
                 await store.refreshFriends()
+            }
+            .sheet(isPresented: $isShowingInvite) {
+                InviteFriendsView()
             }
         }
     }

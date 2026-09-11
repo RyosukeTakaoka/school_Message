@@ -11,6 +11,7 @@ struct ConversationInfoView: View {
     @State private var isAddingMembers = false
     @State private var selectedNewMemberIDs: Set<UserID> = []
     @State private var isConfirmingLeave = false
+    @State private var isShowingFriendsFromAddMembers = false
 
     private var store: ChatStore { environment.store }
 
@@ -71,7 +72,11 @@ struct ConversationInfoView: View {
                 }
 
                 if conversation.kind == .group {
-                    if isOwner && !addableFriends.isEmpty {
+                    // 追加できる候補(友達・すでに会話がある相手)がまだいなくても,
+                    // ボタン自体は出しておく. 以前は候補が 0 人だと丸ごと消えており,
+                    // 「新しい人をグループに誘いたいのに, まず何をすればいいか
+                    // 手がかりが無い」状態になっていた.
+                    if isOwner {
                         Section {
                             Button(String(localized: "メンバーを追加")) {
                                 isAddingMembers = true
@@ -128,20 +133,35 @@ struct ConversationInfoView: View {
 
     private var addMembersSheet: some View {
         NavigationStack {
-            List(addableFriends) { friend in
-                Button {
-                    if selectedNewMemberIDs.contains(friend.id) {
-                        selectedNewMemberIDs.remove(friend.id)
-                    } else {
-                        selectedNewMemberIDs.insert(friend.id)
+            List {
+                if addableFriends.isEmpty {
+                    Section {
+                        Text("追加できる相手がまだいません。友達を追加すると、ここから選べるようになります。")
+                            .font(.footnote)
+                            .foregroundStyle(Palette.subdued)
+                        Button {
+                            isShowingFriendsFromAddMembers = true
+                        } label: {
+                            Label(String(localized: "友達を追加"), systemImage: "person.badge.plus")
+                        }
                     }
-                } label: {
-                    HStack {
-                        AvatarView(profile: friend, size: AppConstants.Layout.avatarSmall)
-                        Text(friend.displayName).foregroundStyle(Color.primary)
-                        Spacer()
-                        Image(systemName: selectedNewMemberIDs.contains(friend.id) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(selectedNewMemberIDs.contains(friend.id) ? Color.accentColor : Palette.subdued)
+                } else {
+                    ForEach(addableFriends) { friend in
+                        Button {
+                            if selectedNewMemberIDs.contains(friend.id) {
+                                selectedNewMemberIDs.remove(friend.id)
+                            } else {
+                                selectedNewMemberIDs.insert(friend.id)
+                            }
+                        } label: {
+                            HStack {
+                                AvatarView(profile: friend, size: AppConstants.Layout.avatarSmall)
+                                Text(friend.displayName).foregroundStyle(Color.primary)
+                                Spacer()
+                                Image(systemName: selectedNewMemberIDs.contains(friend.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedNewMemberIDs.contains(friend.id) ? Color.accentColor : Palette.subdued)
+                            }
+                        }
                     }
                 }
             }
@@ -163,6 +183,11 @@ struct ConversationInfoView: View {
                     }
                     .disabled(selectedNewMemberIDs.isEmpty)
                 }
+            }
+            // 友達を追加した直後にこのシートに戻っても候補に出るようにする.
+            .task { await store.refreshFriends() }
+            .sheet(isPresented: $isShowingFriendsFromAddMembers) {
+                FriendsView()
             }
         }
     }
