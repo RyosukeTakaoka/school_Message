@@ -215,6 +215,60 @@ extension ChatStore {
             .content.game
     }
 
+    /// 色勝負を始める.
+    ///
+    /// 配った手札は, 自分の分は自分の公開鍵宛てに, 相手の分は相手の公開鍵宛てに
+    /// それぞれ封じてから 1 通のメッセージにする(`ColorBattleSnapshot` の
+    /// コメント参照). どちらの公開鍵も無ければ(未登録の相手など)始められない.
+    func startColorBattle(with opponent: UserID, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let myProfile,
+              let opponentProfile = profilesByID[opponent],
+              let myPublicKey = myProfile.publicKeyData,
+              let opponentPublicKey = opponentProfile.publicKeyData
+        else {
+            banner = .recipientHasNoPublicKey(displayName: profilesByID[opponent]?.displayName ?? String(localized: "相手"))
+            return
+        }
+        do {
+            let snapshot = try await ColorBattleSnapshot.new(
+                first: me,
+                second: opponent,
+                firstPublicKey: myPublicKey,
+                secondPublicKey: opponentPublicKey,
+                crypto: crypto
+            )
+            await sendGameMove(.colorBattle(snapshot), in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 色勝負で 1 枚出す.
+    ///
+    /// 自分の手札を復号し, 出した札を除いてから自分の公開鍵宛てに封じ直した
+    /// 次の状態を送る. 出せない場面や持っていない札なら何もしない.
+    func playColorBattleCard(_ card: ColorCard, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .colorBattle, in: conversationID)?.colorBattle
+        else { return }
+        do {
+            guard let next = try await snapshot.playing(card, by: me, crypto: crypto) else { return }
+            await sendGameMove(.colorBattle(next), in: conversationID)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
+    /// 自分の色勝負の手札を復号する(画面表示用). 相手の手札はそもそも
+    /// 復号する手立てが無いため, 常に「自分の分」だけを返す.
+    func decryptedColorBattleHand(in conversationID: ConversationID) async -> [ColorCard] {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .colorBattle, in: conversationID)?.colorBattle
+        else { return [] }
+        return (try? await snapshot.decryptedHand(for: me, crypto: crypto)) ?? []
+    }
+
     /// 対戦を始める / 1 手を進める.
     ///
     /// その時点の状態をまるごと載せたメッセージを送るだけなので, 送信の仕組みは

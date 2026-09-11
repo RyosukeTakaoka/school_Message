@@ -69,7 +69,8 @@ final class ChatStore {
     private let outbox: Outbox
     private let mediaProcessor: MediaProcessor
     private let mediaStore: MediaStore
-    private let crypto: CryptoService
+    /// `ChatStore+Messaging.swift` の色勝負まわりの拡張からも使うため private にしていない.
+    let crypto: CryptoService
     private let networkMonitor: NetworkMonitor
 
     // 画面が観測する必要のない内部状態は追跡対象から外す.
