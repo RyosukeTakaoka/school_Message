@@ -117,6 +117,23 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE MessageReaction (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        conversation    REFERENCE QUERYABLE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        emojiCipher     BYTES,
+        message         REFERENCE QUERYABLE,
+        userID          STRING QUERYABLE SEARCHABLE SORTABLE,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE ReadState (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
