@@ -13,6 +13,8 @@ struct OthelloGameView: View {
     let conversationID: ConversationID
 
     @State private var isSending = false
+    /// 直前に「相手がパスになった」ことを一時的に伝えるための文言.
+    @State private var passNoticeText: String?
 
     private var store: ChatStore { environment.store }
 
@@ -37,6 +39,15 @@ struct OthelloGameView: View {
                 if let snapshot, let board = snapshot.othelloBoard {
                     scoreBar(board)
                     statusLine(snapshot, board: board)
+                    if let passNoticeText {
+                        Text(passNoticeText)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Palette.incomingBubble, in: Capsule())
+                            .transition(.opacity)
+                    }
                     boardView(board)
                     Spacer(minLength: 0)
                     footer(snapshot)
@@ -60,6 +71,24 @@ struct OthelloGameView: View {
                     ErrorBannerView(error: error) { store.setBanner(nil) }
                 }
             }
+        }
+        // オセロは「置ける場所が無い側は自動でパスになる」ルールがあり,
+        // 盤面の計算としては既に正しく処理されていた(`OthelloBoard.placing`)が,
+        // 画面には一切出ていなかったため, 急に自分の番が 2 回続くように見えて
+        // 分かりにくかった. パスが起きた瞬間だけ, 誰がパスになったかを知らせる.
+        .onChange(of: snapshot) { oldValue, newValue in
+            guard let oldBoard = oldValue?.othelloBoard, let newBoard = newValue?.othelloBoard,
+                  newBoard.didPass(comparedTo: oldBoard)
+            else { return }
+            showPassNotice(for: oldBoard.turn.opponent)
+        }
+    }
+
+    private func showPassNotice(for disc: OthelloDisc) {
+        withAnimation { passNoticeText = String(localized: "\(disc.label)は置ける場所が無かったため、パスになりました") }
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            withAnimation { passNoticeText = nil }
         }
     }
 

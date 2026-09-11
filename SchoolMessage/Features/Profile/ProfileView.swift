@@ -18,6 +18,7 @@ struct ProfileView: View {
     @State private var diagnostics: PushNotificationService.Diagnostics?
     @State private var isDiagnosing = false
     @State private var isRetryingSubscription = false
+    @State private var isShowingInvite = false
 
     private var store: ChatStore { environment.store }
 
@@ -80,6 +81,16 @@ struct ProfileView: View {
                     Text("友達にこのユーザIDを伝えると、検索して追加してもらえます。ユーザIDは変更できません。")
                 }
 
+                Section {
+                    Button {
+                        isShowingInvite = true
+                    } label: {
+                        Label(String(localized: "友達をアプリに招待"), systemImage: "qrcode")
+                    }
+                } footer: {
+                    Text("QRコードやリンクで、まだこのアプリを入れていない人にTestFlightからインストールしてもらえます。")
+                }
+
                 notificationSection
 
                 legalSection
@@ -119,6 +130,9 @@ struct ProfileView: View {
             }
             .sheet(item: $readingDocument) { document in
                 LegalDocumentScreen(document: document)
+            }
+            .sheet(isPresented: $isShowingInvite) {
+                InviteFriendsView()
             }
             .confirmationDialog(
                 String(localized: "ログアウトしますか?"),
