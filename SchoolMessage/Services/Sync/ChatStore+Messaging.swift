@@ -59,6 +59,7 @@ extension ChatStore {
             merge(fetched, into: conversationID)
             await loadMissingSenderProfiles(from: fetched)
             await refreshReadReceipts(in: conversationID)
+            await refreshReactions(in: conversationID)
         } catch {
             let appError = AppError.wrap(error)
             if appError != .offline {
@@ -123,6 +124,56 @@ extension ChatStore {
         // (代入するだけで画面全体の再描画が走るため).
         guard conversations[index].readReceipts != receipts else { return }
         conversations[index].readReceipts = receipts
+    }
+
+    // MARK: - リアクション
+
+    /// 会話ぶんのリアクションを取り直す.
+    ///
+    /// プッシュ通知・専用の購読は用意していない(絵文字 1 つのために CloudKit の
+    /// 購読をもう 1 種類増やすほどではないと判断した). 代わりに, 新着メッセージの
+    /// 取得(`refreshMessages`)に相乗りする形にしてあり, チャットを開いている間は
+    /// 数秒間隔のポーリングで, 閉じていても次にそのチャットを開いたときに追いつく.
+    func refreshReactions(in conversationID: ConversationID) async {
+        guard let fetched = try? await backend.fetchReactions(in: conversationID) else { return }
+        reactionsByConversation[conversationID] = Dictionary(grouping: fetched, by: \.messageID)
+    }
+
+    /// 自分のリアクションを付け替える.
+    ///
+    /// 同じ絵文字をもう一度選ぶと外れ, 別の絵文字を選ぶと差し替わる
+    /// (1 人 1 メッセージにつき 1 個まで).
+    func toggleReaction(_ emoji: String, on message: Message) async {
+        guard let me = currentUserID else { return }
+        let conversationID = message.conversationID
+
+        let existingMine = reactionsByConversation[conversationID]?[message.id]?
+            .first { $0.userID == me }
+        let newEmoji: String? = existingMine?.emoji == emoji ? nil : emoji
+
+        // 次のポーリングを待たず, その場で反映する.
+        var messageReactions = reactionsByConversation[conversationID]?[message.id] ?? []
+        messageReactions.removeAll { $0.userID == me }
+        if let newEmoji {
+            messageReactions.append(
+                MessageReaction(
+                    messageID: message.id,
+                    conversationID: conversationID,
+                    userID: me,
+                    emoji: newEmoji,
+                    createdAt: .now
+                )
+            )
+        }
+        reactionsByConversation[conversationID, default: [:]][message.id] = messageReactions
+
+        do {
+            try await backend.setReaction(newEmoji, on: message.id, in: conversationID)
+        } catch {
+            // 失敗しても, 次の更新で正しい状態に戻る. わざわざバナーで邪魔しない
+            // (リアクションのタップは頻繁な操作なので, 失敗のたびに出すと煩わしい).
+            Log.backend.notice("failed to set reaction")
+        }
     }
 
     private func isRead(_ message: Message, in conversationID: ConversationID) -> Bool {
@@ -348,6 +399,7 @@ extension ChatStore {
         _ cards: [PlayingCard],
         extraCard: PlayingCard? = nil,
         giveTo giveRecipientID: UserID? = nil,
+        declaredRank: PlayingRank? = nil,
         in conversationID: ConversationID
     ) async {
         guard let me = currentUserID,
@@ -362,6 +414,7 @@ extension ChatStore {
                 extraCard: extraCard,
                 giveRecipientID: giveRecipientID,
                 giveRecipientPublicKey: giveRecipientPublicKey,
+                declaredRank: declaredRank,
                 crypto: crypto
             ) else { return }
             var next = snapshot

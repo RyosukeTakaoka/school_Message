@@ -83,6 +83,7 @@ recordName: `convkey-<会話>-<受信者>-<作成者>`
 | フィールド | 型 | インデックス | 用途 |
 |---|---|---|---|
 | `conversation` | Reference | QUERYABLE | 対象の会話 |
+| `conversationKey` | String | QUERYABLE, SEARCHABLE, SORTABLE | 会話ごとの購読（`conversationKey == "<文字列>"`）の絞り込みに使う |
 | `senderID` | String | QUERYABLE | 送信者（`creatorUserRecordID` と突き合わせて検証） |
 | `sentAt` | Date/Time | **QUERYABLE, SORTABLE** | 並び替えとページングに必須 |
 | `payload` | Bytes | — | 暗号化した本文・メディアのメタデータ・返信先（引用） |
@@ -125,6 +126,28 @@ recordName: `readstate-<会話>-<ユーザ>`（本人しか書けない）
 | `leftAt` | Date/Time | — | |
 
 recordName: `leave-<会話>-<ユーザ>`
+
+## MessageReaction
+
+メッセージへの絵文字リアクション。`Message` とは別のレコードタイプにしているのは、
+Public Database では「更新できるのは作成者だけ」であり、他人が送ったメッセージの
+レコードに自分の反応を書き足すことができないためです。代わりに、リアクションした
+本人だけが作れる専用レコードにして、メッセージ ID で結びつけています。
+
+| フィールド | 型 | インデックス | 用途 |
+|---|---|---|---|
+| `conversation` | Reference | QUERYABLE | 会話ぶんまとめて取得するための絞り込み |
+| `message` | Reference | QUERYABLE | どのメッセージへのリアクションか |
+| `userID` | String | QUERYABLE | リアクションした本人（`creatorUserRecordID` と突き合わせて検証） |
+| `emojiCipher` | Bytes | — | 暗号化した絵文字 1 文字 |
+| `createdAt` | Date/Time | — | |
+
+recordName: `reaction-<メッセージ>-<ユーザ>`（1 人 1 メッセージにつき 1 件に決定的に収束する。
+選び直し・取り消しは同じレコードの上書き・削除で済む）
+
+> プッシュ購読は用意していません（絵文字 1 つのために CloudKit の購読をもう 1 種類
+> 増やすほどではないと判断したため）。既存のメッセージ取得のポーリングに相乗りして
+> 取得し直しているので、チャットを開いている間は数秒〜十数秒の遅延で反映されます。
 
 ---
 

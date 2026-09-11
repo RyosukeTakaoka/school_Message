@@ -103,6 +103,12 @@ Xcode 側でコンテナ名を選び直すだけで揃います。
 あると良いもの: `UserProfile.displayName` を QUERYABLE にすると名前での検索が効きます
 （無くてもユーザID の完全一致検索は動きます）。
 
+メッセージへの絵文字リアクション機能を使うには、`MessageReaction.conversation` を
+QUERYABLE にしてください（Development 環境で一度どれかのメッセージにリアクションを
+付けてレコードタイプを自動生成させてから、インデックスを設定し、Production へ
+「Deploy Schema Changes」してください)。設定していない間もアプリ自体は落ちず、
+リアクションが反映されないだけです。
+
 **セキュリティロールは既定のまま**にしてください。
 理由は [`SECURITY.md`](SECURITY.md#書き込み権限) にあります。
 

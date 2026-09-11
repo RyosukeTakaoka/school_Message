@@ -53,6 +53,8 @@ struct MessageBubbleView: View {
                 bubble
                     .contextMenu { replyMenu }
 
+                reactionsRow
+
                 footer
             }
 
@@ -119,27 +121,93 @@ struct MessageBubbleView: View {
     /// 元が送信中でも表示は崩れず, 送信キューは投入順に送るため順序も保たれる.
     @ViewBuilder
     private var replyMenu: some View {
-        // 取り消し済みと対戦のカードには何も操作させない.
-        if !message.isUnsent, message.content.game == nil {
-            Button {
-                onReply()
-            } label: {
-                Label(String(localized: "返信"), systemImage: "arrowshape.turn.up.left")
+        // 取り消し済みには何も操作させない.
+        if !message.isUnsent {
+            // `ControlGroup` を使うと, メニューの先頭に横並びのボタン列として出る
+            // (Notes 等のリアクションバーと同じ考え方). タップ 1 回で選べる.
+            ControlGroup {
+                ForEach(Self.quickReactionEmojis, id: \.self) { emoji in
+                    Button {
+                        Task { await store.toggleReaction(emoji, on: message) }
+                    } label: {
+                        Text(emoji)
+                    }
+                }
             }
-            if case .text(let body) = message.content {
+
+            // 対戦のカードには返信・コピー・取り消しはさせない(リアクションのみ).
+            if message.content.game == nil {
                 Button {
-                    UIPasteboard.general.string = body
+                    onReply()
                 } label: {
-                    Label(String(localized: "コピー"), systemImage: "doc.on.doc")
+                    Label(String(localized: "返信"), systemImage: "arrowshape.turn.up.left")
+                }
+                if case .text(let body) = message.content {
+                    Button {
+                        UIPasteboard.general.string = body
+                    } label: {
+                        Label(String(localized: "コピー"), systemImage: "doc.on.doc")
+                    }
+                }
+                if message.canUnsend(by: store.currentUserID) {
+                    Button(role: .destructive) {
+                        onUnsend()
+                    } label: {
+                        Label(String(localized: "送信を取り消す"), systemImage: "arrow.uturn.backward")
+                    }
                 }
             }
-            if message.canUnsend(by: store.currentUserID) {
-                Button(role: .destructive) {
-                    onUnsend()
-                } label: {
-                    Label(String(localized: "送信を取り消す"), systemImage: "arrow.uturn.backward")
+        }
+    }
+
+    /// 長押しメニューに出す, よく使う絵文字の候補.
+    private static let quickReactionEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+
+    /// 吹き出しの下に出す, 付いているリアクションの一覧.
+    ///
+    /// 同じ絵文字ごとにまとめ, 人数が 2 人以上なら数を添える.
+    /// 自分が付けたものは縁取りで示し, タップすると外れる.
+    @ViewBuilder
+    private var reactionsRow: some View {
+        let reactions = store.reactionsByConversation[message.conversationID]?[message.id] ?? []
+        if !message.isUnsent, !reactions.isEmpty {
+            let grouped = Dictionary(grouping: reactions, by: \.emoji)
+            HStack(spacing: 4) {
+                ForEach(grouped.keys.sorted(), id: \.self) { emoji in
+                    let matches = grouped[emoji] ?? []
+                    let isMine = matches.contains { $0.userID == store.currentUserID }
+                    Button {
+                        Task { await store.toggleReaction(emoji, on: message) }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text(emoji).font(.footnote)
+                            if matches.count > 1 {
+                                Text("\(matches.count)")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(isMine ? Color.accentColor : Palette.subdued)
+                            }
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            isMine ? Color.accentColor.opacity(0.15) : Palette.incomingBubble,
+                            in: Capsule()
+                        )
+                        .overlay {
+                            if isMine {
+                                Capsule().strokeBorder(Color.accentColor, lineWidth: 1)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        isMine
+                        ? String(localized: "\(emoji) 自分を含む\(matches.count)人。タップで取り消す")
+                        : String(localized: "\(emoji) \(matches.count)人")
+                    )
                 }
             }
+            .padding(.horizontal, 4)
         }
     }
 
