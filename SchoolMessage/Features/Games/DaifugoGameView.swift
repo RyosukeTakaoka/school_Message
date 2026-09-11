@@ -19,6 +19,8 @@ struct DaifugoGameView: View {
     @State private var extraCard: PlayingCard?
     /// 7わたしで渡す相手.
     @State private var giveRecipientID: UserID?
+    /// Qバンバー(クイーンを出したとき)で宣言する数字.
+    @State private var declaredRank: PlayingRank?
 
     private var store: ChatStore { environment.store }
 
@@ -81,6 +83,7 @@ struct DaifugoGameView: View {
             selectedCards = []
             extraCard = nil
             giveRecipientID = nil
+            declaredRank = nil
         }
     }
 
@@ -103,7 +106,7 @@ struct DaifugoGameView: View {
     private static let rulesText = String(localized: """
         3人以上のグループで遊びます。前の人と同じ枚数で、より強い数字を出していきます(3が一番弱く、2が一番強い)。出せる/出したくない番はパスできます。
 
-        5を出すと次の人の番を飛ばし、8を出すとその場で場が流れて自分がまた先に出せます。Jを出すとその場だけ強さが逆転します。7を出すと手札を1枚好きな相手に渡せ、10を出すと手札を1枚捨てられます。同じ数字を4枚以上出すと「革命」で強さが逆転し、次の革命が起きるまで続きます。エースと2を2枚同時に出す「ボンバー」は場の状況に関わらずいつでも出せ、場を流します。
+        5を出すと次の人の番を飛ばし、8を出すとその場で場が流れて自分がまた先に出せます。Jを出すとその場だけ強さが逆転します。7を出すと手札を1枚好きな相手に渡せ、10を出すと手札を1枚捨てられます。同じ数字を4枚以上出すと「革命」で強さが逆転し、次の革命が起きるまで続きます。クイーン(Q)を出すと数字をひとつ宣言でき、自分以外の全員がその数字の札を持っていれば捨てさせられます(通称「Qバンバー」)。
 
         早く手札を出し切った順に「大富豪・富豪・平民・貧民・大貧民」になります。
         """)
@@ -370,6 +373,24 @@ struct DaifugoGameView: View {
             }
         }
 
+        if needsDeclaredRank {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Qバンバー: 宣言する数字を選んでください")
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+                Picker(String(localized: "宣言する数字"), selection: $declaredRank) {
+                    Text(String(localized: "数字を選ぶ")).tag(PlayingRank?.none)
+                    ForEach(PlayingRank.allCases, id: \.self) { rank in
+                        Text(rank.label).tag(PlayingRank?.some(rank))
+                    }
+                }
+                .pickerStyle(.menu)
+                Text("あなた以外の全員が, 持っていればその数字の札を捨てさせられます")
+                    .font(.caption2)
+                    .foregroundStyle(Palette.subdued)
+            }
+        }
+
         HStack(spacing: AppConstants.Layout.standardSpacing) {
             Button(String(localized: "出す")) {
                 Task { await playSelected() }
@@ -398,13 +419,9 @@ struct DaifugoGameView: View {
 
     private var selectedRanks: Set<PlayingRank> { Set(selectedCards.map(\.rank)) }
 
-    private var isBomberSelection: Bool {
-        selectedCards.count == 2 && selectedRanks == [.ace, .two]
-    }
-
-    /// 選んだ札が単一の数字だけのとき, その数字(ボンバーのときは nil).
+    /// 選んだ札が単一の数字だけのとき, その数字.
     private var selectedSpecialRank: PlayingRank? {
-        guard !isBomberSelection, selectedRanks.count == 1 else { return nil }
+        guard selectedRanks.count == 1 else { return nil }
         return selectedRanks.first
     }
 
@@ -418,6 +435,12 @@ struct DaifugoGameView: View {
         return !remainingHandAfterSelection.isEmpty
     }
 
+    /// Qバンバー: クイーンを出すときは, 宣言する数字を選ぶ必要がある.
+    /// (これで上がる場合でも, 他の全員に影響する効果なので選ばせる).
+    private var needsDeclaredRank: Bool {
+        selectedSpecialRank == .queen
+    }
+
     private var canSubmitPlay: Bool {
         guard let currentRound, !selectedCards.isEmpty else { return false }
         guard currentRound.canPlay(Array(selectedCards)) else { return false }
@@ -426,6 +449,9 @@ struct DaifugoGameView: View {
             if selectedSpecialRank == .seven {
                 guard giveRecipientID != nil else { return false }
             }
+        }
+        if needsDeclaredRank {
+            guard declaredRank != nil else { return false }
         }
         return true
     }
@@ -440,6 +466,9 @@ struct DaifugoGameView: View {
             extraCard = nil
             giveRecipientID = nil
         }
+        if !needsDeclaredRank {
+            declaredRank = nil
+        }
     }
 
     // MARK: - 動作
@@ -451,11 +480,13 @@ struct DaifugoGameView: View {
             Array(selectedCards),
             extraCard: extraCard,
             giveTo: giveRecipientID,
+            declaredRank: declaredRank,
             in: conversationID
         )
         selectedCards = []
         extraCard = nil
         giveRecipientID = nil
+        declaredRank = nil
     }
 
     private func pass() async {

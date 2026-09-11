@@ -85,6 +85,15 @@ struct DaifugoSnapshot: Hashable, Sendable, Codable {
         var sealedHands: [UserID: WrappedConversationKey]
         /// 受け取りを待っている, 個別に封じられた 1 枚(7わたし用).
         var pendingGivenCards: [UserID: [WrappedConversationKey]]
+        /// Qバンバー(下記)で, まだ本人の手札から取り除けていない宣言された数字.
+        ///
+        /// クイーンを出した人が宣言した数字は, その場にいる全員(出した本人以外)の
+        /// 手札から取り除かれるはずだが, 本人以外の手札は本人にしか復号できないため
+        /// その場で取り除くことができない. 代わりにここへ積んでおき, 対象者が
+        /// 次に自分の番で札を出すときに, 自分の手札を復号したその場で取り除いて
+        /// 手札を封じ直す(「7わたし」の `pendingGivenCards` と同じ考え方).
+        /// パスだけしている間は取り除けない(手札に触れないため).
+        var pendingRankPurgesByPlayer: [UserID: [PlayingRank]]
         /// 手札の残り枚数(暗号化しない. 進行そのものから分かる情報のため).
         var handCounts: [UserID: Int]
         /// 上がった順(先頭が最初に上がった人 = 大富豪).
@@ -187,6 +196,7 @@ extension DaifugoSnapshot.Round {
             seating: seating,
             sealedHands: sealedHands,
             pendingGivenCards: [:],
+            pendingRankPurgesByPlayer: [:],
             handCounts: handCounts,
             finishedOrder: [],
             fieldCards: [],
@@ -249,6 +259,10 @@ extension DaifugoSnapshot.Round {
 
     /// 自分の手札を開ける. 受け取り待ちの札(7わたしで受け取った分)があれば
     /// それも合わせて返す(ただし, まだ自分の封じた手札には取り込まれていない).
+    ///
+    /// Qバンバー(`playing` 参照)で自分宛ての宣言が積まれている場合, 表示上は
+    /// 先に取り除いた状態を返す(実際に手札から取り除いて保存し直すのは,
+    /// 本人が次に札を出すときになる).
     func decryptedHand(for userID: UserID, crypto: CryptoService) async throws -> [PlayingCard] {
         var hand: [PlayingCard] = []
         if let sealed = sealedHands[userID] {
@@ -258,6 +272,10 @@ extension DaifugoSnapshot.Round {
         for pending in pendingGivenCards[userID] ?? [] {
             let data = try await crypto.openSealedToSelf(pending)
             hand.append(try JSONDecoder().decode(PlayingCard.self, from: data))
+        }
+        let purges = pendingRankPurgesByPlayer[userID] ?? []
+        if !purges.isEmpty {
+            hand.removeAll { purges.contains($0.rank) }
         }
         return hand
     }
@@ -271,45 +289,50 @@ extension DaifugoSnapshot.Round {
     func canPlay(_ cards: [PlayingCard]) -> Bool {
         guard !cards.isEmpty else { return false }
         let ranks = Set(cards.map(\.rank))
-        let isBomber = cards.count == 2 && ranks == [.ace, .two]
-        let allSameRank = ranks.count == 1
-        guard isBomber || allSameRank else { return false }
+        guard ranks.count == 1 else { return false }
         guard !fieldCards.isEmpty else { return true }
-        guard !isBomber else { return true }
-        guard allSameRank, cards.count == fieldCards.count, let fieldRank = fieldCards.first?.rank else {
+        guard cards.count == fieldCards.count, let fieldRank = fieldCards.first?.rank else {
             return false
         }
         let reversed = isRevolution != isTrickReversed
         return Self.isStronger(cards[0].rank, than: fieldRank, reversed: reversed)
     }
 
-    /// 札を出す. `extraCard` は 7わたしで渡す札, または 10捨てで捨てる札
-    /// (出した札が 7 か 10 かで意味が変わる). 出せない手なら nil.
+    /// 札を出す.
+    /// - `extraCard`: 7わたしで渡す札, または 10捨てで捨てる札(出した札が 7 か 10 かで意味が変わる).
+    /// - `declaredRank`: Qバンバー(クイーンを出したときだけ使う)で宣言する数字.
+    ///   出した本人以外の全員から, その数字の札を強制的に捨てさせる.
+    ///
+    /// 出せない手なら nil.
     func playing(
         _ cards: [PlayingCard],
         by userID: UserID,
         extraCard: PlayingCard? = nil,
         giveRecipientID: UserID? = nil,
         giveRecipientPublicKey: Data? = nil,
+        declaredRank: PlayingRank? = nil,
         crypto: CryptoService
     ) async throws -> DaifugoSnapshot.Round? {
         guard isTurn(of: userID), canPlay(cards) else { return nil }
 
-        let ranks = Set(cards.map(\.rank))
-        let isBomber = cards.count == 2 && ranks == [.ace, .two]
-        let rank: PlayingRank? = isBomber ? nil : cards[0].rank
+        let rank = cards[0].rank
 
+        var next = self
+
+        // 自分宛てに積まれた Qバンバーの宣言があれば, 出す前にまず自分の手札から
+        // 取り除く(取り除いた後の手札に, これから出そうとしている札が
+        // 残っているかで判定する. 既に無くなっていれば出せない).
         var myHand = try await decryptedHand(for: userID, crypto: crypto)
+        next.pendingRankPurgesByPlayer[userID] = nil
+
         for card in cards {
             guard let index = myHand.firstIndex(of: card) else { return nil }
             myHand.remove(at: index)
         }
 
-        var next = self
-
         // 7わたし・10捨て: 出した札を除いた後の手札が対象.
         // 最後の 1 枚を出して上がった場合は, 渡す/捨てる札が無いので何もしない.
-        if let rank, !myHand.isEmpty, let extraCard, let index = myHand.firstIndex(of: extraCard) {
+        if !myHand.isEmpty, let extraCard, let index = myHand.firstIndex(of: extraCard) {
             if rank == .seven, let giveRecipientID, let giveRecipientPublicKey {
                 myHand.remove(at: index)
                 let sealedCard = try await crypto.sealToPublicKey(
@@ -319,6 +342,15 @@ extension DaifugoSnapshot.Round {
                 next.handCounts[giveRecipientID] = (next.handCounts[giveRecipientID] ?? 0) + 1
             } else if rank == .ten {
                 myHand.remove(at: index)
+            }
+        }
+
+        // Qバンバー: クイーンを出すと, 好きな数字をひとつ宣言できる.
+        // 宣言された数字は, 出した本人以外の全員が次に自分の番で手札を
+        // 開いたときに取り除かれる(仕組みは `pendingRankPurgesByPlayer` 参照).
+        if rank == .queen, let declaredRank {
+            for other in seating where other != userID {
+                next.pendingRankPurgesByPlayer[other, default: []].append(declaredRank)
             }
         }
 
@@ -357,8 +389,8 @@ extension DaifugoSnapshot.Round {
             return next
         }
 
-        if isBomber || rank == .eight {
-            // 12ボンバー・8切り: 場を即座に流し, 出した本人がそのまま親を続ける
+        if rank == .eight {
+            // 8切り: 場を即座に流し, 出した本人がそのまま親を続ける
             // (本人がこの札で上がっていれば, 代わりに次の現役プレイヤーから).
             next.fieldCards = []
             next.fieldOwnerID = nil

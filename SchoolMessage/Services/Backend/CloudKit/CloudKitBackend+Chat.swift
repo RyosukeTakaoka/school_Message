@@ -7,7 +7,9 @@ extension CloudKitBackend {
 
     // MARK: - 参照ヘルパ
 
-    private func reference(to conversationID: ConversationID) -> CKRecord.Reference {
+    /// `CloudKitBackend+Reactions.swift` からも使うため private にしていない
+    /// (`private` はファイル単位のスコープなので, 別ファイルの extension からは見えない).
+    func reference(to conversationID: ConversationID) -> CKRecord.Reference {
         // Public Database では親子関係を作らないので action は .none.
         CKRecord.Reference(
             recordID: CKRecord.ID(recordName: conversationID.rawValue),

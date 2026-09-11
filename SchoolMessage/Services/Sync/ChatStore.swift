@@ -36,6 +36,8 @@ final class ChatStore {
     var loadingConversationIDs: Set<ConversationID> = []
     /// これ以上さかのぼれる履歴があるか.
     var hasMoreHistory: Set<ConversationID> = []
+    /// 会話 → (メッセージ → 付いているリアクション).
+    var reactionsByConversation: [ConversationID: [MessageID: [MessageReaction]]] = [:]
 
     private(set) var isRefreshingConversations = false
 

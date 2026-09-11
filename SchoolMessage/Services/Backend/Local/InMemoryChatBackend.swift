@@ -21,6 +21,8 @@ actor InMemoryChatBackend: ChatBackend {
     private var readReceipts: [ConversationID: [UserID: Date]] = [:]
     private var boardThreads: [BoardThread] = []
     private var boardPosts: [BoardPost] = []
+    /// メッセージ ID → (ユーザ → リアクション). 1 人 1 個までなのでユーザ単位で持つ.
+    private var reactions: [MessageID: [UserID: MessageReaction]] = [:]
 
     init(seeded: Bool = true) {
         let owner = UserProfile(
@@ -283,6 +285,27 @@ actor InMemoryChatBackend: ChatBackend {
 
     func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date] {
         readReceipts[conversationID] ?? [:]
+    }
+
+    // MARK: - リアクション
+
+    func fetchReactions(in conversationID: ConversationID) async throws -> [MessageReaction] {
+        let messageIDs = Set((messages[conversationID] ?? []).map(\.id))
+        return reactions.values.flatMap(\.values).filter { messageIDs.contains($0.messageID) }
+    }
+
+    func setReaction(_ emoji: String?, on messageID: MessageID, in conversationID: ConversationID) async throws {
+        guard let emoji else {
+            reactions[messageID]?[me.id] = nil
+            return
+        }
+        reactions[messageID, default: [:]][me.id] = MessageReaction(
+            messageID: messageID,
+            conversationID: conversationID,
+            userID: me.id,
+            emoji: emoji,
+            createdAt: .now
+        )
     }
 
     // MARK: - 掲示板

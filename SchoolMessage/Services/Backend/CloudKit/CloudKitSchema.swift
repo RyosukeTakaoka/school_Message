@@ -166,6 +166,28 @@ enum CKSchema {
         static let senderDisplayName = "senderDisplayName"
     }
 
+    // MARK: - MessageReaction
+
+    /// メッセージへの絵文字リアクション. `Message` とは別のレコードタイプにする理由は
+    /// `MessageReaction.swift` のコメントを参照(作成者以外はメッセージを書き換えられないため).
+    enum MessageReaction {
+        static let recordType = "MessageReaction"
+
+        static let conversation = "conversation"   // Reference, QUERYABLE
+        static let message = "message"             // Reference, QUERYABLE
+        /// リアクションした本人. QUERYABLE. 取得時に creatorUserRecordID と突き合わせる.
+        static let userID = "userID"
+        /// 暗号化した絵文字 1 文字.
+        static let emojiCipher = "emojiCipher"
+        static let createdAt = "createdAt"
+
+        /// 1 人 1 メッセージにつき 1 レコードに決定的に収束させる.
+        /// 選び直し・取り消しのたびに, 同じレコードを上書き・削除するだけで済む.
+        static func recordName(message: MessageID, user: UserID) -> String {
+            "reaction-\(message.rawValue)-\(user.rawValue)"
+        }
+    }
+
     // MARK: - ReadState
 
     /// 「誰がどの会話をどこまで読んだか」. メッセージ 1 件ごとに既読フラグを持たず,

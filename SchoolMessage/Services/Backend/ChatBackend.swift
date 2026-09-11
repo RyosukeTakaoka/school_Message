@@ -111,6 +111,21 @@ protocol ChatBackend: Sendable {
     /// 自分以外の参加者の既読位置. 「自分の送信に既読が付いたか」の表示に使う.
     func fetchReadReceipts(in conversationID: ConversationID) async throws -> [UserID: Date]
 
+    // MARK: リアクション
+
+    /// 会話内の全メッセージへの絵文字リアクション.
+    ///
+    /// 新着メッセージの取得(`refreshMessages`)のたびに呼び直され, 差分ではなく
+    /// 会話ぶん丸ごとを返す想定. リアクションは件数も更新頻度も本文よりずっと
+    /// 少ないため, 差分管理の複雑さに見合わない.
+    func fetchReactions(in conversationID: ConversationID) async throws -> [MessageReaction]
+
+    /// 自分のリアクションを設定する. `emoji` が `nil` なら外す.
+    ///
+    /// 1 人 1 メッセージにつき 1 個までなので, 既にある自分のリアクションは
+    /// 呼ぶたびに置き換わる(新規追加・絵文字の変更・削除のすべてをこの 1 本で担う).
+    func setReaction(_ emoji: String?, on messageID: MessageID, in conversationID: ConversationID) async throws
+
     // MARK: 掲示板
 
     /// スレッド一覧(最後の書き込みが新しい順).
