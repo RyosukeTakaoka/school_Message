@@ -109,6 +109,14 @@ QUERYABLE にしてください（Development 環境で一度どれかのメッ�
 「Deploy Schema Changes」してください)。設定していない間もアプリ自体は落ちず、
 リアクションが反映されないだけです。
 
+掲示板の書き込みに写真を添付できるようにするには、`BoardPost` に
+`imageAsset`（Asset）・`imageThumbnail`（Bytes）・`imageWidth`・`imageHeight`・
+`imageByteCount`（いずれも Int(64)）の 5 フィールドが必要です。インデックスは
+不要です（一覧の絞り込みには使わないため）。上と同じく、Development 環境で
+一度写真付きの書き込みをしてフィールドを自動生成させてから、Production へ
+「Deploy Schema Changes」してください。設定していない間は、写真を選んでも
+送信時にエラーになります。
+
 **セキュリティロールは既定のまま**にしてください。
 理由は [`SECURITY.md`](SECURITY.md#書き込み権限) にあります。
 

@@ -131,14 +131,18 @@ protocol ChatBackend: Sendable {
     /// スレッド一覧(最後の書き込みが新しい順).
     func fetchBoardThreads() async throws -> [BoardThread]
 
-    /// スレッドを立てる. 最初の書き込みも同時に行う.
-    func createBoardThread(title: String, body: String) async throws -> BoardThread
+    /// スレッドを立てる. 最初の書き込みも同時に行う. `image` があれば添付する.
+    func createBoardThread(title: String, body: String, image: OutgoingMessage.LocalMedia?) async throws -> BoardThread
 
     /// スレッドの書き込み(古い順).
     func fetchBoardPosts(in threadID: ThreadID) async throws -> [BoardPost]
 
-    /// スレッドに書き込む.
-    func createBoardPost(in threadID: ThreadID, body: String) async throws -> BoardPost
+    /// スレッドに書き込む. `image` があれば添付する
+    /// (掲示板は暗号化しないため, 写真もチャットとは別の平文のフィールドに保存される).
+    func createBoardPost(in threadID: ThreadID, body: String, image: OutgoingMessage.LocalMedia?) async throws -> BoardPost
+
+    /// 掲示板の写真本体をダウンロードする. 暗号化していないため復号は不要.
+    func downloadBoardImage(_ reference: MediaReference) async throws -> URL
 
     /// 掲示板への新着通知を受け取れるようにする(冪等). 通知の設定でオンにしたときに呼ぶ.
     func configureBoardSubscription() async throws

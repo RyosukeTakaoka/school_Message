@@ -320,14 +320,18 @@ actor InMemoryChatBackend: ChatBackend {
             .sorted { $0.lastPostedAt > $1.lastPostedAt }
     }
 
-    func createBoardThread(title: String, body: String) async throws -> BoardThread {
+    func createBoardThread(
+        title: String,
+        body: String,
+        image: OutgoingMessage.LocalMedia?
+    ) async throws -> BoardThread {
         let thread = BoardThread(
             title: try BoardThread.validateTitle(title),
             authorID: me.id,
             postCount: 1
         )
         boardThreads.append(thread)
-        _ = try await createBoardPost(in: thread.id, body: body)
+        _ = try await createBoardPost(in: thread.id, body: body, image: image)
         return thread
     }
 
@@ -343,17 +347,34 @@ actor InMemoryChatBackend: ChatBackend {
             }
     }
 
-    func createBoardPost(in threadID: ThreadID, body: String) async throws -> BoardPost {
-        let post = BoardPost(
+    func createBoardPost(
+        in threadID: ThreadID,
+        body: String,
+        image: OutgoingMessage.LocalMedia?
+    ) async throws -> BoardPost {
+        var post = BoardPost(
             threadID: threadID,
             authorID: me.id,
-            body: try BoardPost.validateBody(body)
+            body: try BoardPost.validateBody(body, hasImage: image != nil)
         )
+        if let image {
+            post.image = BoardImageAttachment(
+                thumbnailData: image.thumbnailData,
+                localURL: image.fileURL,
+                pixelWidth: image.pixelWidth,
+                pixelHeight: image.pixelHeight,
+                byteCount: image.byteCount
+            )
+        }
         boardPosts.append(post)
         if let index = boardThreads.firstIndex(where: { $0.id == threadID }) {
             boardThreads[index].lastPostedAt = post.createdAt
         }
         return post
+    }
+
+    func downloadBoardImage(_ reference: MediaReference) async throws -> URL {
+        throw AppError.underlying("プレビューでは画像を取得できません")
     }
 
     // MARK: - メディア

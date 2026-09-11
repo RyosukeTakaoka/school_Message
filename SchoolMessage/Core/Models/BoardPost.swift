@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 /// 掲示板のスレッド.
 ///
@@ -51,6 +52,33 @@ struct BoardThread: Identifiable, Hashable, Sendable {
     }
 }
 
+/// 掲示板の書き込みに添付する写真.
+///
+/// チャットの `MediaAttachment` と分けているのは, 掲示板は暗号化しないため
+/// (`BoardThread` のコメント参照)復号の手立てを持つ必要が無く, もっと単純な形で
+/// 済むため. 動画には対応しない(掲示板は軽い読み物の場という位置づけのため).
+struct BoardImageAttachment: Hashable, Sendable {
+    /// 本体(圧縮済み JPEG)への参照. 暗号化していないので, 誰でも直接開ける.
+    ///
+    /// 各プロパティに `= nil` を明示しているのは, これが無いと合成される
+    /// memberwise イニシャライザがオプショナル型でも省略不可の引数になり,
+    /// `remote` や `localURL` を省いた呼び出しがコンパイルできなくなるため.
+    var remote: MediaReference? = nil
+    /// 一覧にすぐ出す小さなサムネイル. 平文なので取得と同時に届く.
+    var thumbnailData: Data? = nil
+    /// 送信直後, ダウンロードを待たずに表示するためのローカルの位置.
+    var localURL: URL? = nil
+    var pixelWidth: Int
+    var pixelHeight: Int
+    var byteCount: Int
+
+    /// 表示のアスペクト比を先に確定させるため(ダウンロード前でも縦横比が分かる).
+    var aspectRatio: CGFloat {
+        guard pixelWidth > 0, pixelHeight > 0 else { return 1 }
+        return CGFloat(pixelWidth) / CGFloat(pixelHeight)
+    }
+}
+
 /// 掲示板の書き込み.
 struct BoardPost: Identifiable, Hashable, Sendable {
 
@@ -62,6 +90,8 @@ struct BoardPost: Identifiable, Hashable, Sendable {
     let createdAt: Date
     /// スレッド内の通し番号(1 から).
     var number: Int
+    /// 添付した写真. 無ければ文章だけの書き込み.
+    var image: BoardImageAttachment?
 
     init(
         id: PostID = .generate(),
@@ -69,7 +99,8 @@ struct BoardPost: Identifiable, Hashable, Sendable {
         authorID: UserID,
         body: String,
         createdAt: Date = .now,
-        number: Int = 0
+        number: Int = 0,
+        image: BoardImageAttachment? = nil
     ) {
         self.id = id
         self.threadID = threadID
@@ -77,13 +108,15 @@ struct BoardPost: Identifiable, Hashable, Sendable {
         self.body = body
         self.createdAt = createdAt
         self.number = number
+        self.image = image
     }
 
     static let bodyMaxLength = 1000
 
-    static func validateBody(_ raw: String) throws -> String {
+    /// `hasImage` が true のときは, 写真だけで文章が無い投稿を許す.
+    static func validateBody(_ raw: String, hasImage: Bool = false) throws -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard hasImage || !trimmed.isEmpty else {
             throw AppError.underlying(String(localized: "本文を入力してください"))
         }
         guard trimmed.count <= bodyMaxLength else {

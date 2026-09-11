@@ -228,6 +228,13 @@ enum CKSchema {
         static let authorID = "authorID"        // QUERYABLE
         static let body = "body"                // 平文
         static let createdAt = "createdAt"      // QUERYABLE, SORTABLE
+        /// 添付した写真本体. 掲示板は暗号化しないので, チャットと違い平文のまま保存する.
+        static let imageAsset = "imageAsset"
+        /// 一覧にすぐ出すための小さなサムネイル(平文. レコードに同梱).
+        static let imageThumbnail = "imageThumbnail"
+        static let imageWidth = "imageWidth"
+        static let imageHeight = "imageHeight"
+        static let imageByteCount = "imageByteCount"
     }
 
     // MARK: - Subscription

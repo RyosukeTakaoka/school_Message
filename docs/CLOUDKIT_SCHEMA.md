@@ -149,6 +149,41 @@ recordName: `reaction-<メッセージ>-<ユーザ>`（1 人 1 メッセージ�
 > 増やすほどではないと判断したため）。既存のメッセージ取得のポーリングに相乗りして
 > 取得し直しているので、チャットを開いている間は数秒〜十数秒の遅延で反映されます。
 
+## BoardThread / BoardPost
+
+掲示板のスレッドと書き込み。チャットと違い**誰でも読める前提**なので、会話鍵での
+暗号化は行わない（本文が平文で保存されることは画面と規約で明示している）。
+
+### BoardThread
+
+| フィールド | 型 | インデックス | 用途 |
+|---|---|---|---|
+| `title` | String | — | 平文 |
+| `authorID` | String | QUERYABLE | 立てた人（`creatorUserRecordID` と突き合わせて検証） |
+| `createdAt` | Date/Time | QUERYABLE, SORTABLE | |
+| `lastPostedAt` | Date/Time | QUERYABLE, SORTABLE | 一覧の並べ替えに使う |
+
+recordName: クライアントが採番した UUID
+
+### BoardPost
+
+| フィールド | 型 | インデックス | 用途 |
+|---|---|---|---|
+| `thread` | Reference | QUERYABLE | どのスレッドの書き込みか |
+| `authorID` | String | QUERYABLE | 書き込んだ人（`creatorUserRecordID` と突き合わせて検証） |
+| `body` | String | — | 平文。写真だけの書き込みでは空文字列 |
+| `createdAt` | Date/Time | QUERYABLE, SORTABLE | |
+| `imageAsset` | Asset | — | 添付した写真本体（暗号化しない） |
+| `imageThumbnail` | Bytes | — | 一覧にすぐ出す小さなサムネイル（平文, レコードに同梱） |
+| `imageWidth` | Int(64) | — | |
+| `imageHeight` | Int(64) | — | |
+| `imageByteCount` | Int(64) | — | |
+
+recordName: クライアントが採番した UUID
+
+> 写真の 4 フィールド（`imageAsset` 以下）は, 書き込みに写真を添付したときだけ
+> 値が入る。文章だけの書き込みでは触れないので, 未設定のままで構わない。
+
 ---
 
 ## セキュリティロール
