@@ -1037,7 +1037,8 @@ extension CloudKitBackend {
         return try await crypto.open(cipher, with: key)
     }
 
-    private func fetchRecordWithAsset(recordName: String, fieldName: String) async throws -> CKRecord {
+    /// `CloudKitBackend+Board.swift` の掲示板の写真ダウンロードからも使うため private にしていない.
+    func fetchRecordWithAsset(recordName: String, fieldName: String) async throws -> CKRecord {
         let recordID = CKRecord.ID(recordName: recordName)
         let results = try await database.records(for: [recordID], desiredKeys: [fieldName])
         guard let result = results[recordID] else {

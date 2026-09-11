@@ -44,10 +44,14 @@ extension CloudKitBackend {
         }
     }
 
-    func createBoardThread(title: String, body: String) async throws -> BoardThread {
+    func createBoardThread(
+        title: String,
+        body: String,
+        image: OutgoingMessage.LocalMedia?
+    ) async throws -> BoardThread {
         let me = try await currentUserID()
         let validTitle = try BoardThread.validateTitle(title)
-        let validBody = try BoardPost.validateBody(body)
+        let validBody = try BoardPost.validateBody(body, hasImage: image != nil)
 
         let thread = BoardThread(title: validTitle, authorID: me, postCount: 1)
 
@@ -68,7 +72,7 @@ extension CloudKitBackend {
 
         // 1 番目の書き込み. ここで失敗してもスレッド自体は残るので,
         // 「タイトルだけのスレッド」になるだけで壊れはしない.
-        _ = try await createBoardPost(in: thread.id, body: validBody)
+        _ = try await createBoardPost(in: thread.id, body: validBody, image: image)
         return thread
     }
 
@@ -91,11 +95,15 @@ extension CloudKitBackend {
         }
     }
 
-    func createBoardPost(in threadID: ThreadID, body: String) async throws -> BoardPost {
+    func createBoardPost(
+        in threadID: ThreadID,
+        body: String,
+        image: OutgoingMessage.LocalMedia?
+    ) async throws -> BoardPost {
         let me = try await currentUserID()
-        let validBody = try BoardPost.validateBody(body)
+        let validBody = try BoardPost.validateBody(body, hasImage: image != nil)
 
-        let post = BoardPost(threadID: threadID, authorID: me, body: validBody)
+        var post = BoardPost(threadID: threadID, authorID: me, body: validBody)
         let record = CKRecord(
             recordType: CKSchema.BoardPost.recordType,
             recordID: CKRecord.ID(recordName: post.id.rawValue)
@@ -108,14 +116,70 @@ extension CloudKitBackend {
         record[CKSchema.BoardPost.body] = validBody as CKRecordValue
         record[CKSchema.BoardPost.createdAt] = post.createdAt as CKRecordValue
 
+        if let image {
+            guard mediaStore.fileExists(at: image.fileURL) else {
+                throw AppError.underlying(String(localized: "送信する写真が見つかりませんでした"))
+            }
+            record[CKSchema.BoardPost.imageAsset] = CKAsset(fileURL: image.fileURL)
+            if !image.thumbnailData.isEmpty {
+                record[CKSchema.BoardPost.imageThumbnail] = image.thumbnailData as CKRecordValue
+            }
+            record[CKSchema.BoardPost.imageWidth] = NSNumber(value: image.pixelWidth)
+            record[CKSchema.BoardPost.imageHeight] = NSNumber(value: image.pixelHeight)
+            record[CKSchema.BoardPost.imageByteCount] = NSNumber(value: image.byteCount)
+        }
+
         do {
             _ = try await saveWithRetry(record)
         } catch {
             throw CloudKitErrorMapping.appError(from: error)
         }
 
+        // 圧縮済みファイルは Outbox 用の置き場に作られたものだが, 掲示板の書き込みは
+        // チャットと違って再送のためにファイルを残しておく仕組みが無いので,
+        // アップロードが済んだ時点でここで片付ける.
+        if let image {
+            mediaStore.remove(at: image.fileURL)
+            post.image = BoardImageAttachment(
+                remote: MediaReference(
+                    recordName: post.id.rawValue,
+                    fieldName: CKSchema.BoardPost.imageAsset,
+                    byteCount: image.byteCount
+                ),
+                thumbnailData: image.thumbnailData,
+                pixelWidth: image.pixelWidth,
+                pixelHeight: image.pixelHeight,
+                byteCount: image.byteCount
+            )
+        }
+
         await touchThreadIfMine(threadID, me: me)
         return post
+    }
+
+    /// 掲示板の写真本体をダウンロードする.
+    ///
+    /// チャットの `downloadMedia` と違い, 会話鍵での復号は行わない
+    /// (掲示板の写真はそもそも暗号化して保存していないため).
+    func downloadBoardImage(_ reference: MediaReference) async throws -> URL {
+        let destination = mediaStore.cachedURL(for: reference, kind: .image)
+        if mediaStore.fileExists(at: destination) { return destination }
+
+        let record: CKRecord
+        do {
+            record = try await fetchRecordWithAsset(
+                recordName: reference.recordName,
+                fieldName: reference.fieldName
+            )
+        } catch {
+            throw CloudKitErrorMapping.appError(from: error)
+        }
+
+        guard let asset = record[reference.fieldName] as? CKAsset, let sourceURL = asset.fileURL else {
+            throw AppError.underlying(String(localized: "写真が見つかりませんでした"))
+        }
+        try FileManager.default.copyItem(at: sourceURL, to: destination)
+        return destination
     }
 
     /// スレッドの「最後の書き込み時刻」を更新する.
@@ -147,7 +211,10 @@ extension CloudKitBackend {
             )
         )
         query.sortDescriptors = [NSSortDescriptor(key: CKSchema.BoardPost.createdAt, ascending: true)]
-        return try await queryWithRetry(query, limit: Self.boardPostLimit)
+        // 写真本体(`imageAsset`)は含めない. スレッドを開くたびに全書き込みぶんの
+        // 写真を丸ごとダウンロードするのは無駄が大きいので, サムネイルだけ運び,
+        // 本体はタップされたときに `downloadBoardImage` で取りにいく.
+        return try await queryWithRetry(query, desiredKeys: Self.postDesiredKeys, limit: Self.boardPostLimit)
     }
 
     /// スレッドごとの書き込み数.
@@ -201,18 +268,49 @@ extension CloudKitBackend {
             return nil
         }
 
+        var image: BoardImageAttachment?
+        if let width = record[CKSchema.BoardPost.imageWidth] as? Int,
+           let height = record[CKSchema.BoardPost.imageHeight] as? Int {
+            image = BoardImageAttachment(
+                remote: MediaReference(
+                    recordName: record.recordID.recordName,
+                    fieldName: CKSchema.BoardPost.imageAsset,
+                    byteCount: record[CKSchema.BoardPost.imageByteCount] as? Int ?? 0
+                ),
+                thumbnailData: record[CKSchema.BoardPost.imageThumbnail] as? Data,
+                pixelWidth: width,
+                pixelHeight: height,
+                byteCount: record[CKSchema.BoardPost.imageByteCount] as? Int ?? 0
+            )
+        }
+
         return BoardPost(
             id: PostID(record.recordID.recordName),
             threadID: ThreadID(reference.recordID.recordName),
             authorID: UserID(authorRaw),
             body: body,
             createdAt: record[CKSchema.BoardPost.createdAt] as? Date ?? record.creationDate ?? .now,
-            number: 0
+            number: 0,
+            image: image
         )
     }
 
     /// 一覧に出すスレッド数の上限.
     private static var boardThreadLimit: Int { 200 }
+
+    /// 書き込み一覧の取得時に要求するフィールド.
+    /// `imageAsset`(写真本体)は含めない — 一覧を開くたびに全書き込みぶんの
+    /// 写真をダウンロードしないため.
+    private static let postDesiredKeys: [CKRecord.FieldKey] = [
+        CKSchema.BoardPost.thread,
+        CKSchema.BoardPost.authorID,
+        CKSchema.BoardPost.body,
+        CKSchema.BoardPost.createdAt,
+        CKSchema.BoardPost.imageThumbnail,
+        CKSchema.BoardPost.imageWidth,
+        CKSchema.BoardPost.imageHeight,
+        CKSchema.BoardPost.imageByteCount
+    ]
     /// 1 スレッドあたりの書き込み取得数の上限.
     private static var boardPostLimit: Int { 500 }
 }

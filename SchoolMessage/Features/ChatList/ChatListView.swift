@@ -20,16 +20,28 @@ struct ChatListView: View {
 
     var body: some View {
         List(selection: $selection) {
-            ForEach(store.conversations) { conversation in
-                ChatListRow(conversation: conversation)
-                    .tag(conversation.id)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            Task { await store.leaveConversation(conversation.id) }
-                        } label: {
-                            Label(String(localized: "退出"), systemImage: "rectangle.portrait.and.arrow.right")
+            // トップレベルの入り口として, 通常のチャットとはっきり区別できる
+            // 見た目で置く. 以前は右上のアイコンだけだったため見つけにくかった.
+            Section {
+                boardEntryRow
+            }
+
+            Section {
+                ForEach(store.conversations) { conversation in
+                    ChatListRow(conversation: conversation)
+                        .tag(conversation.id)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                Task { await store.leaveConversation(conversation.id) }
+                            } label: {
+                                Label(String(localized: "退出"), systemImage: "rectangle.portrait.and.arrow.right")
+                            }
                         }
-                    }
+                }
+            } header: {
+                if !store.conversations.isEmpty {
+                    Text("チャット")
+                }
             }
         }
         .listStyle(.sidebar)
@@ -61,9 +73,6 @@ struct ChatListView: View {
                 Button(action: onCreateGroup) {
                     Label(String(localized: "グループを作成"), systemImage: "person.3.sequence")
                 }
-                Button(action: onShowBoard) {
-                    Label(String(localized: "掲示板"), systemImage: "text.bubble")
-                }
                 Button(action: onShowStreetPass) {
                     Label(String(localized: "すれ違い通信"), systemImage: "figure.walk.motion")
                 }
@@ -92,6 +101,40 @@ struct ChatListView: View {
             guard let newValue else { return }
             Task { await store.openConversation(newValue) }
         }
+    }
+
+    /// 掲示板への入り口. アイコンだけのボタンでは見つけにくかったため,
+    /// チャット一覧の一番上に「何の場所か」が一目で分かる行として置く.
+    private var boardEntryRow: some View {
+        Button(action: onShowBoard) {
+            HStack(spacing: AppConstants.Layout.standardSpacing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.accentColor.gradient)
+                        .frame(width: AppConstants.Layout.avatarMedium, height: AppConstants.Layout.avatarMedium)
+                    Image(systemName: "text.bubble.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: AppConstants.Layout.avatarMedium * 0.45, weight: .semibold))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("掲示板")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    Text("みんなが読める、名前の出ない掲示板")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.subdued)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.subdued)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "掲示板"))
+        .accessibilityHint(String(localized: "みんなが読める掲示板を開きます"))
     }
 
     private var emptyState: some View {
