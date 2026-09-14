@@ -77,7 +77,7 @@ struct DaifugoGameView: View {
         // 復号し直す(色勝負と同じ考え方).
         .task(id: snapshot) {
             guard currentRound != nil else { return }
-            myHand = await store.decryptedDaifugoHand(in: conversationID)
+            myHand = Self.sorted(await store.decryptedDaifugoHand(in: conversationID))
         }
         .onChange(of: snapshot) { _, _ in
             selectedCards = []
@@ -300,37 +300,92 @@ struct DaifugoGameView: View {
                 .font(.caption)
                 .foregroundStyle(Palette.subdued)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    if myHand.isEmpty {
-                        Text("なし")
-                            .font(.caption)
-                            .foregroundStyle(Palette.subdued)
-                    }
-                    ForEach(myHand) { card in
-                        Button {
-                            toggleSelection(card)
-                        } label: {
-                            PlayingCardView(card: card, size: .large)
-                                .overlay {
-                                    if selectedCards.contains(card) {
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .strokeBorder(Color.accentColor, lineWidth: 3)
+            if myHand.isEmpty {
+                Text("なし")
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+            } else {
+                // 横スクロールにせず, 手札の枚数に応じてカード幅を縮めて
+                // 1 画面に収める(枚数が多い対戦でもスクロールなしで見渡せるように).
+                GeometryReader { geometry in
+                    let width = Self.handCardWidth(count: myHand.count, availableWidth: geometry.size.width)
+                    HStack(spacing: Self.handCardSpacing) {
+                        ForEach(myHand) { card in
+                            let isSelectable = isCardSelectable(card, in: round)
+                            Button {
+                                toggleSelection(card)
+                            } label: {
+                                PlayingCardView(card: card, size: .fit(width: width))
+                                    .overlay {
+                                        if selectedCards.contains(card) {
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .strokeBorder(Color.accentColor, lineWidth: 3)
+                                        }
                                     }
-                                }
+                                    // 選べるものは実態のまま, 選べない
+                                    // (組み合わせとして成立しない・場に勝てない)ものは半透明にする.
+                                    .opacity(isSelectable ? 1 : 0.35)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!canAct || !isSelectable)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!canAct)
                     }
+                    .frame(width: geometry.size.width, alignment: .leading)
                 }
-                .padding(.vertical, 2)
+                .frame(height: PlayingCardView.Size.fit(width: Self.handCardMaxWidth).height)
+                .opacity(canAct ? 1 : 0.55)
             }
-            .opacity(canAct ? 1 : 0.55)
 
             if canAct {
                 actionControls(round, me: me)
             }
         }
+    }
+
+    /// 手札を 1 画面に収めるためのカード幅. 枚数が多いほど狭くする
+    /// (読みやすさを保つため下限は設ける).
+    private static func handCardWidth(count: Int, availableWidth: CGFloat) -> CGFloat {
+        guard count > 0, availableWidth > 0 else { return handCardMaxWidth }
+        let totalSpacing = handCardSpacing * CGFloat(count - 1)
+        let widthPerCard = (availableWidth - totalSpacing) / CGFloat(count)
+        return min(handCardMaxWidth, max(handCardMinWidth, widthPerCard))
+    }
+
+    private static let handCardMaxWidth: CGFloat = 58
+    private static let handCardMinWidth: CGFloat = 26
+    private static let handCardSpacing: CGFloat = 6
+
+    /// 標準的な並び(3が一番左, 2が一番右)に自動で並べ替える.
+    /// 革命中でも, 手札の並び自体は見慣れた順のまま変えない
+    /// (強さの逆転は場との比較だけに反映する).
+    private static func sorted(_ cards: [PlayingCard]) -> [PlayingCard] {
+        cards.sorted { lhs, rhs in
+            if lhs.rank != rhs.rank { return lhs.rank.rawValue < rhs.rank.rawValue }
+            let suits = PlayingSuit.allCases
+            return (suits.firstIndex(of: lhs.suit) ?? 0) < (suits.firstIndex(of: rhs.suit) ?? 0)
+        }
+    }
+
+    /// この札(が属する数字)を選べるか.
+    ///
+    /// 既に選んでいる札は(選択を外せるように)常に選べる扱いにする. まだ何も
+    /// 選んでいなければ, 場に対して出せる見込みがあるかだけを見る. 既に
+    /// 何か選んでいれば, 同じ数字の札しか(大富豪では複数枚出すとき同じ数字
+    /// でなければならないため)追加で選べない.
+    private func isCardSelectable(_ card: PlayingCard, in round: DaifugoSnapshot.Round) -> Bool {
+        if selectedCards.contains(card) { return true }
+        guard canEverBeat(rank: card.rank, in: round) else { return false }
+        return selectedRanks.isEmpty || selectedRanks.contains(card.rank)
+    }
+
+    /// 手元にあるこの数字の枚数で, 今の場に勝てる見込みがあるか
+    /// (場が空なら, 何を出しても自由に出せるので常に true).
+    private func canEverBeat(rank: PlayingRank, in round: DaifugoSnapshot.Round) -> Bool {
+        guard let fieldRank = round.fieldCards.first?.rank else { return true }
+        let reversed = round.isRevolution != round.isTrickReversed
+        guard DaifugoSnapshot.Round.isStronger(rank, than: fieldRank, reversed: reversed) else { return false }
+        let countInHand = myHand.filter { $0.rank == rank }.count
+        return countInHand >= round.fieldCards.count
     }
 
     @ViewBuilder
@@ -502,10 +557,26 @@ struct PlayingCardView: View {
     enum Size {
         case small
         case large
+        /// 手札を 1 画面に収めるため, 幅を自由な値に縮められるようにしたもの.
+        case fit(width: CGFloat)
 
-        var width: CGFloat { self == .small ? 40 : 58 }
-        var height: CGFloat { self == .small ? 56 : 80 }
-        var font: Font { self == .small ? .headline : .title2 }
+        var width: CGFloat {
+            switch self {
+            case .small: 40
+            case .large: 58
+            case .fit(let width): width
+            }
+        }
+        /// 「大」の縦横比(80/58)に合わせる.
+        var height: CGFloat {
+            switch self {
+            case .small: 56
+            case .large: 80
+            case .fit(let width): width * (80.0 / 58.0)
+            }
+        }
+        var rankFontSize: CGFloat { width * 0.42 }
+        var suitFontSize: CGFloat { width * 0.24 }
     }
 
     let card: PlayingCard
@@ -514,9 +585,9 @@ struct PlayingCardView: View {
     var body: some View {
         VStack(spacing: 2) {
             Image(systemName: card.suit.symbolName)
-                .font(size == .small ? .caption2 : .footnote)
+                .font(.system(size: size.suitFontSize))
             Text(card.rank.label)
-                .font(size.font.weight(.bold))
+                .font(.system(size: size.rankFontSize, weight: .bold))
                 .monospacedDigit()
                 .minimumScaleFactor(0.5)
         }

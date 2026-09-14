@@ -20,13 +20,15 @@ struct MessageComposerView: View {
     @State private var isPreparingAttachment = false
     @State private var isShowingCamera = false
     @State private var composerHeight: CGFloat = AppConstants.Layout.composerMinHeight
-    @FocusState private var isInputFocused: Bool
-
-    /// `@FocusState` はSwiftUI標準の入力欄にしか直接繋げられないため,
-    /// `UIViewRepresentable` 側には普通の `Binding<Bool>` として渡す.
-    private var isInputFocusedBinding: Binding<Bool> {
-        Binding(get: { isInputFocused }, set: { isInputFocused = $0 })
-    }
+    /// 入力欄の `UITextView` を自前で first responder にしているため,
+    /// `@FocusState` は使わない. `@FocusState` は `.focused()` で紐付けた
+    /// SwiftUI標準の入力欄と同期する仕組みで, ここでは何にも紐付いていない
+    /// (`ComposerTextView` へ手渡すだけの) 状態にまで使うと, SwiftUI が
+    /// 「どの入力欄にも紐付いていない」と判断して勝手に `false` へ戻してしまう
+    /// ことがあり, その結果 `ComposerTextView` 側が `resignFirstResponder()`
+    /// を呼んでキーボードが閉じてしまっていた
+    /// (iPad のソフトウェアキーボードで 1 文字打つと閉じる不具合の原因).
+    @State private var isInputFocused = false
 
     /// 送信前の添付.
     private enum Draft: Equatable {
@@ -207,7 +209,7 @@ struct MessageComposerView: View {
             ComposerTextView(
                 text: $text,
                 placeholder: String(localized: "メッセージを入力"),
-                isFocused: isInputFocusedBinding,
+                isFocused: $isInputFocused,
                 height: $composerHeight,
                 minHeight: AppConstants.Layout.composerMinHeight,
                 maxHeight: AppConstants.Layout.composerMaxHeight,
