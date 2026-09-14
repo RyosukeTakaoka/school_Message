@@ -253,14 +253,14 @@ struct MessageBubbleView: View {
     private var contentBubble: some View {
         switch message.content {
         case .text(let body):
-            Text(body)
+            Text(highlightedBody(body))
                 .font(.body)
                 .foregroundStyle(isOutgoing ? Palette.outgoingText : Palette.incomingText)
                 .textSelection(.enabled)
                 .padding(.horizontal, AppConstants.Layout.bubbleHorizontalPadding)
                 .padding(.vertical, AppConstants.Layout.bubbleVerticalPadding)
                 .background(
-                    isOutgoing ? Palette.outgoingBubble : Palette.incomingBubble,
+                    textBubbleBackground,
                     in: BubbleShape(isOutgoing: isOutgoing, isGroupedWithPrevious: isGroupedWithPrevious)
                 )
                 .frame(maxWidth: 460, alignment: isOutgoing ? .trailing : .leading)
@@ -277,6 +277,65 @@ struct MessageBubbleView: View {
         case .game(let snapshot):
             gameBubble(snapshot)
         }
+    }
+
+    /// 自分がこのメッセージでメンションされているか.
+    private var mentionsMe: Bool {
+        guard let me = store.currentUserID else { return false }
+        return message.mentions.contains(me)
+    }
+
+    /// テキストの吹き出しの背景. 自分がメンションされた受信メッセージだけ, ひと目で
+    /// 分かるように色を変える(LINE 等の「メンションされた吹き出し」と同じ考え方).
+    private var textBubbleBackground: Color {
+        if isOutgoing { return Palette.outgoingBubble }
+        return mentionsMe ? Color.accentColor.opacity(0.18) : Palette.incomingBubble
+    }
+
+    /// 本文中の「@表示名」を強調する.
+    ///
+    /// メンションは相手の userID の配列でしか持っていないので, 表示名を
+    /// 今の(送信時点ではなく現在の)プロフィールから引いて本文中を探す.
+    /// 送信後に相手が表示名を変えていた場合は一致しなくなり, 強調が付かなくなるが,
+    /// 本文自体は変わらないので実害はない.
+    private func highlightedBody(_ body: String) -> AttributedString {
+        let needles = message.mentions
+            .map { "@\(store.displayName(for: $0))" }
+            .filter { $0 != "@" }
+        guard !needles.isEmpty else { return AttributedString(body) }
+
+        var result = AttributedString()
+        var searchStart = body.startIndex
+        while searchStart < body.endIndex {
+            // この位置から一番早く(同じ位置なら一番長く)見つかるメンションを選ぶ.
+            // 「田中」と「田中太郎」のように片方がもう片方を含むときに, 二重に
+            // 強調してしまわないようにするため.
+            var bestRange: Range<String.Index>?
+            for needle in needles {
+                guard let range = body.range(of: needle, range: searchStart..<body.endIndex) else { continue }
+                if let current = bestRange {
+                    if range.lowerBound < current.lowerBound
+                        || (range.lowerBound == current.lowerBound && range.upperBound > current.upperBound) {
+                        bestRange = range
+                    }
+                } else {
+                    bestRange = range
+                }
+            }
+            guard let matchRange = bestRange else {
+                result += AttributedString(body[searchStart...])
+                break
+            }
+            if matchRange.lowerBound > searchStart {
+                result += AttributedString(body[searchStart..<matchRange.lowerBound])
+            }
+            var highlighted = AttributedString(body[matchRange])
+            highlighted.foregroundColor = Color.accentColor
+            highlighted.font = .body.weight(.semibold)
+            result += highlighted
+            searchStart = matchRange.upperBound
+        }
+        return result
     }
 
     /// 対戦の状況を出すカード. タップで対戦の画面を開く.

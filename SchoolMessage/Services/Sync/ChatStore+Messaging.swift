@@ -197,7 +197,8 @@ extension ChatStore {
     func sendText(
         _ text: String,
         in conversationID: ConversationID,
-        replyTo: ReplyReference? = nil
+        replyTo: ReplyReference? = nil,
+        mentions: [UserID] = []
     ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let me = currentUserID else { return }
@@ -206,7 +207,8 @@ extension ChatStore {
             conversationID: conversationID,
             senderID: me,
             body: .text(String(trimmed.prefix(AppConstants.Validation.messageTextMaxLength))),
-            replyTo: replyTo
+            replyTo: replyTo,
+            mentions: mentions.isEmpty ? nil : mentions
         )
         await enqueueAndShow(outgoing)
     }

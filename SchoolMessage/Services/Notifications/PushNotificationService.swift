@@ -234,10 +234,17 @@ final class PushNotificationService: NSObject {
     ) async {
         let content = UNMutableNotificationContent()
         let senderName = store.displayName(for: message.senderID)
+        let mentionsMe = store.currentUserID.map(message.mentions.contains) ?? false
 
         if let conversation = store.conversation(conversationID), conversation.kind == .group {
-            content.title = store.title(for: conversation)
-            content.subtitle = senderName
+            if mentionsMe {
+                // メンションされたときは, 誰から来たかより先に「自分宛て」だと分かるようにする.
+                content.title = String(localized: "\(senderName)さんがあなたをメンションしました")
+                content.subtitle = store.title(for: conversation)
+            } else {
+                content.title = store.title(for: conversation)
+                content.subtitle = senderName
+            }
         } else {
             content.title = senderName
         }
