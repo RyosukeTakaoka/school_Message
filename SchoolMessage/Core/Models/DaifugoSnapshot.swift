@@ -401,6 +401,20 @@ extension DaifugoSnapshot.Round {
             return next
         }
 
+        if next.finishedOrder.contains(userID) {
+            // 出した本人がこの一手で上がった場合, その場に出した札は誰にも
+            // 戻せない(`nextActivePlayer` は上がった人を必ず飛ばすため,
+            // 場の持ち主が上がった人のままだと一周してもその人まで戻れず,
+            // 残りのプレイヤー同士でパスが無限に回り続けてしまう ―
+            // 「相手がずっと同じ札を出し続ける」ように見えていた不具合の原因).
+            // 8切りと同様その場で場を流し, 次の現役プレイヤーを新しい親にする.
+            next.fieldCards = []
+            next.fieldOwnerID = nil
+            next.isTrickReversed = false
+            next.currentPlayerID = next.nextActivePlayer(after: userID) ?? userID
+            return next
+        }
+
         // 通常の進行. 5スキップなら, 出した枚数ぶんだけ余分に手番を進める.
         next.fieldCards = cards
         next.fieldOwnerID = userID
