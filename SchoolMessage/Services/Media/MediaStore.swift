@@ -124,7 +124,6 @@ struct MediaStore: Sendable {
     private static func fileExtension(for kind: MediaKind) -> String {
         switch kind {
         case .image: "jpg"
-        case .gif: "gif"
         case .video: "mp4"
         }
     }

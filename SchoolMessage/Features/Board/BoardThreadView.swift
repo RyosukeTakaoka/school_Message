@@ -20,8 +20,6 @@ struct BoardThreadView: View {
     @State private var isSending = false
     @State private var isPreparingAttachment = false
     @State private var viewingImage: BoardImageAttachment?
-    @State private var isShowingGifPicker = false
-    @State private var isSendingGif = false
     @FocusState private var isInputFocused: Bool
 
     private var store: ChatStore { environment.store }
@@ -67,11 +65,6 @@ struct BoardThreadView: View {
         }
         .fullScreenCover(item: $viewingImage) { image in
             BoardImageViewerScreen(image: image)
-        }
-        .sheet(isPresented: $isShowingGifPicker) {
-            GifPickerView { data in
-                await sendGif(data)
-            }
         }
     }
 
@@ -144,24 +137,12 @@ struct BoardThreadView: View {
                             }
                     }
                 }
-                // タップして開くまでは静止画(1 コマ目)のまま出す. スレッドを開くたびに
-                // 全書き込みぶんの GIF を自動再生させると通信・描画の負荷が大きいため,
-                // ここでは「GIF」の印だけ付けておく(再生はタップして開いたときだけ).
-                if image.kind == .gif {
-                    Text("GIF")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(.black.opacity(0.55), in: Capsule())
-                        .foregroundStyle(.white)
-                        .padding(6)
-                }
             }
             .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: AppConstants.Layout.bubbleCornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(image.kind == .gif ? String(localized: "添付されたGIF") : String(localized: "添付された写真"))
+        .accessibilityLabel(String(localized: "添付された写真"))
     }
 
     @ViewBuilder
@@ -203,16 +184,6 @@ struct BoardThreadView: View {
                 }
                 .accessibilityLabel(String(localized: "写真を選ぶ"))
 
-                Button {
-                    isShowingGifPicker = true
-                } label: {
-                    Text("GIF")
-                        .font(.system(size: 14, weight: .bold))
-                        .frame(width: 28, height: 28)
-                }
-                .disabled(isSendingGif)
-                .accessibilityLabel(String(localized: "GIFを選ぶ"))
-
                 TextField(String(localized: "書き込む"), text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...5)
@@ -222,7 +193,7 @@ struct BoardThreadView: View {
                     .frame(minHeight: AppConstants.Layout.composerMinHeight)
                     .background(Palette.chatBackground, in: Capsule())
 
-                if isSending || isPreparingAttachment || isSendingGif {
+                if isSending || isPreparingAttachment {
                     ProgressView().frame(width: 36, height: 36)
                 } else {
                     Button(action: send) {
@@ -277,20 +248,6 @@ struct BoardThreadView: View {
             return
         }
         draftImageData = data
-    }
-
-    /// GIF ピッカーで選んだものは, 下書きを経由せずその場で書き込む
-    /// (チャットの GIF 送信と同じ考え方).
-    private func sendGif(_ data: Data) async {
-        isSendingGif = true
-        defer { isSendingGif = false }
-        do {
-            let media = try await store.processor.prepareGif(originalData: data)
-            _ = try await environment.backend.createBoardPost(in: thread.id, body: "", image: media)
-            await load()
-        } catch {
-            store.setBanner(AppError.wrap(error))
-        }
     }
 
     private func send() {
@@ -385,7 +342,7 @@ private struct BoardImageViewerScreen: View {
     private var content: some View {
         switch loadState {
         case .ready(let url):
-            ZoomableImageView(url: url, kind: image.kind, isZoomedIn: $isZoomedIn)
+            ZoomableImageView(url: url, isZoomedIn: $isZoomedIn)
         case .loading:
             ZStack {
                 if let data = image.thumbnailData, let uiImage = UIImage(data: data) {
@@ -431,7 +388,7 @@ private struct BoardImageViewerScreen: View {
         }
         .disabled(saveState == .saving)
         .padding()
-        .accessibilityLabel(image.kind == .gif ? String(localized: "GIFを保存") : String(localized: "写真を保存"))
+        .accessibilityLabel(String(localized: "写真を保存"))
     }
 
     private func load() async {

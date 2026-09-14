@@ -65,7 +65,6 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
 	</dict>
-	<key>GiphyAPIKey</key>
-	<string>gx7cHIEbeOedgdvnCG8hfoZ6xWO25Kgi</string>
+
 </dict>
 </plist>

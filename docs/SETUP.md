@@ -117,13 +117,6 @@ QUERYABLE にしてください（Development 環境で一度どれかのメッ�
 「Deploy Schema Changes」してください。設定していない間は、写真を選んでも
 送信時にエラーになります。
 
-掲示板に **GIF** を書き込めるようにするには、上の 5 つに加えて
-`BoardPost.imageKind`（String）も必要です。これは「写真か GIF か」を
-区別するための新しいフィールドで、`docs/cloudkit-schema.ckdb` にも追記済みです。
-このフィールドを設定していない間は、掲示板への GIF 投稿だけが送信時にエラーに
-なります（既存の写真投稿や、チャットでの GIF 送信には影響しません。チャットの
-GIF はメッセージ本文と同じ暗号化フィールドに載るため、スキーマの追加が不要です）。
-
 アプリ内ゲームのポイント「CHIP」とそのランキングを使うには、`PlayerWallet`
 レコードタイプが必要です。フィールドは `ownerID`（String）・`balance`（Int(64)）・
 `bankruptAt`（Date/Time）・`settledGameIDs`（String のリスト）・`updatedAt`（Date/Time）で、
@@ -136,21 +129,6 @@ GIF はメッセージ本文と同じ暗号化フィールドに載るため、�
 
 **セキュリティロールは既定のまま**にしてください。
 理由は [`SECURITY.md`](SECURITY.md#書き込み権限) にあります。
-
-### GIF検索(Giphy)を使えるようにする(任意)
-
-チャットや掲示板から GIF を検索して送れる機能は, [Giphy](https://developers.giphy.com/)
-の検索 API を使っています。使うには自分用の API キーが必要です(無料)。
-
-1. https://developers.giphy.com/ でアカウントを作り, 「Create an App」から
-   **SDK**(Mobile/API どちらでも動作します)を選んでアプリを登録する
-2. 発行された API キーをコピーする
-3. `Config/Info.plist` を開き, `GiphyAPIKey` の値(空文字列になっている)に貼り付ける
-   (社内・学校配布のみで Git 管理下に置きたくない場合は, Xcode の Build Settings で
-   ユーザ定義変数を作り, Info.plist 側を `$(GIPHY_API_KEY)` のような参照に変えてもよい)
-
-設定していない間も, GIF 検索ボタン自体は表示されますが, 開くとエラーで案内が出るだけで
-アプリの他の機能には影響しません。
 
 ## 5. 2 台にインストールする
 

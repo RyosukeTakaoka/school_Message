@@ -18,7 +18,6 @@ final class AppEnvironment {
     let pushService: PushNotificationService
     let consent: ConsentStore
     let streetPass: StreetPassStore
-    let giphyService: GiphyService
     let linkPreviewService: LinkPreviewService
 
     private init(
@@ -30,7 +29,6 @@ final class AppEnvironment {
         pushService: PushNotificationService,
         consent: ConsentStore,
         streetPass: StreetPassStore,
-        giphyService: GiphyService,
         linkPreviewService: LinkPreviewService
     ) {
         self.backend = backend
@@ -41,7 +39,6 @@ final class AppEnvironment {
         self.pushService = pushService
         self.consent = consent
         self.streetPass = streetPass
-        self.giphyService = giphyService
         self.linkPreviewService = linkPreviewService
         pushService.attach(store: store)
         streetPass.attach(store: store)
@@ -89,7 +86,6 @@ final class AppEnvironment {
             pushService: PushNotificationService(preferences: preferences),
             consent: ConsentStore(),
             streetPass: StreetPassStore(),
-            giphyService: GiphyService(apiKey: AppConstants.ExternalServices.giphyAPIKey),
             linkPreviewService: LinkPreviewService()
         )
     }

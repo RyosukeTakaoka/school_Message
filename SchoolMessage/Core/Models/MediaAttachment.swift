@@ -28,9 +28,6 @@ struct MediaReference: Hashable, Sendable, Codable {
 /// 写真・動画の種別.
 enum MediaKind: String, Hashable, Sendable, Codable, CaseIterable {
     case image
-    /// GIF(Giphy から選んだもの含む). アニメーションを保つため, `image` と違って
-    /// 再エンコードせず元のバイト列のまま扱う(`MediaProcessor.prepareGif` 参照).
-    case gif
     case video
 }
 

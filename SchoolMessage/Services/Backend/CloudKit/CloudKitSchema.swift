@@ -262,10 +262,9 @@ enum CKSchema {
         static let imageWidth = "imageWidth"
         static let imageHeight = "imageHeight"
         static let imageByteCount = "imageByteCount"
-        /// "image" または "gif"(`MediaKind.rawValue`). このフィールドが無い
-        /// 古いレコードは `.image` として扱う(`CloudKitBackend+Board.swift` 参照).
-        /// 新しいフィールドなので, Production 環境には別途スキーマの
-        /// デプロイが要る(docs/cloudkit-schema.ckdb / docs/SETUP.md 参照).
+        /// GIF機能を廃止したため, いまはアプリから書き込まない
+        /// (`MediaKind.rawValue`. 常に `.image` 扱い). フィールド自体は
+        /// スキーマに残っている(`CloudKitBackend+Board.swift` 参照)。
         static let imageKind = "imageKind"
     }
 

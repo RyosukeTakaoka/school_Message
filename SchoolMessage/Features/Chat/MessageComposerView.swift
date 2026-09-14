@@ -19,7 +19,6 @@ struct MessageComposerView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var isPreparingAttachment = false
     @State private var isShowingCamera = false
-    @State private var isShowingGifPicker = false
     @State private var composerHeight: CGFloat = AppConstants.Layout.composerMinHeight
 
     /// 「@」で選べる状態のときの検索文字列. nil のときはメンション選択中ではない.
@@ -110,11 +109,6 @@ struct MessageComposerView: View {
                 isShowingCamera = false
             }
             .ignoresSafeArea()
-        }
-        .sheet(isPresented: $isShowingGifPicker) {
-            GifPickerView { data in
-                await sendGif(data)
-            }
         }
     }
 
@@ -299,15 +293,6 @@ struct MessageComposerView: View {
                 .accessibilityLabel(String(localized: "撮影する"))
             }
 
-            Button {
-                isShowingGifPicker = true
-            } label: {
-                Text("GIF")
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(width: 28, height: 28)
-            }
-            .accessibilityLabel(String(localized: "GIFを選ぶ"))
-
             // 標準の `TextField` + `.onSubmit` ではなく `UITextView` を
             // 直接使っているのは, 日本語入力の変換確定にも使う外付けキーボードの
             // Return を, 変換中かどうかを見て正しく扱うため
@@ -347,14 +332,6 @@ struct MessageComposerView: View {
     }
 
     // MARK: - 動作
-
-    /// GIF ピッカーで選んだものは, 下書きを経由せずその場で送る
-    /// (スタンプに近い操作感にするため. `send()` とは別経路).
-    private func sendGif(_ data: Data) async {
-        let reply = replyingTo.map { ReplyReference(replyingTo: $0) }
-        replyingTo = nil
-        await store.sendGif(originalData: data, in: conversationID, replyTo: reply)
-    }
 
     private func send() {
         guard canSend else { return }
