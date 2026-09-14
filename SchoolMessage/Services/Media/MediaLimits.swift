@@ -24,6 +24,13 @@ enum MediaLimits {
     /// 品質を落として再試行するときの下限品質.
     static let imageMinimumCompressionQuality: CGFloat = 0.4
 
+    // MARK: GIF
+
+    /// GIF は(アニメーションを保つため)再エンコードせずそのまま送るので,
+    /// 代わりにファイルサイズの上限で大きすぎるものを弾く. Giphy の
+    /// 「downsized」相当の書き出しは大抵これより十分小さい.
+    static let gifMaxByteCount = 6 * 1024 * 1024
+
     // MARK: 動画
 
     /// 送信できる動画の長さの上限.

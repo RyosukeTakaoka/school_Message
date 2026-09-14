@@ -14,6 +14,9 @@ import Foundation
 enum MessageContent: Hashable, Sendable {
     case text(String)
     case image(MediaAttachment)
+    /// Giphy などから選んだ GIF. `image` と分けているのは, 一覧のプレビューや
+    /// 吹き出しの見た目(自動再生させるかどうか)を区別する必要があるため.
+    case gif(MediaAttachment)
     case video(MediaAttachment)
     /// チャットに付随する対戦(オセロ・色勝負)の 1 手.
     case game(GameSnapshot)
@@ -22,7 +25,7 @@ enum MessageContent: Hashable, Sendable {
     var attachment: MediaAttachment? {
         switch self {
         case .text, .game: nil
-        case .image(let attachment), .video(let attachment): attachment
+        case .image(let attachment), .gif(let attachment), .video(let attachment): attachment
         }
     }
 
@@ -37,6 +40,7 @@ enum MessageContent: Hashable, Sendable {
         switch self {
         case .text, .game: self
         case .image: .image(attachment)
+        case .gif: .gif(attachment)
         case .video: .video(attachment)
         }
     }
@@ -46,6 +50,7 @@ enum MessageContent: Hashable, Sendable {
         switch self {
         case .text(let body): body
         case .image: String(localized: "写真")
+        case .gif: String(localized: "GIF")
         case .video: String(localized: "動画")
         case .game(let snapshot): snapshot.previewText
         }
@@ -248,7 +253,7 @@ struct MessagePayload: Hashable, Sendable, Codable {
         case .text(let body):
             self.text = body
             self.media = nil
-        case .image(let attachment), .video(let attachment):
+        case .image(let attachment), .gif(let attachment), .video(let attachment):
             self.text = nil
             self.media = MediaMetadata(
                 attachmentID: attachment.id,

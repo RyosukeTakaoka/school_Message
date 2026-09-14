@@ -359,6 +359,7 @@ actor InMemoryChatBackend: ChatBackend {
         )
         if let image {
             post.image = BoardImageAttachment(
+                kind: image.kind,
                 thumbnailData: image.thumbnailData,
                 localURL: image.fileURL,
                 pixelWidth: image.pixelWidth,
@@ -373,7 +374,7 @@ actor InMemoryChatBackend: ChatBackend {
         return post
     }
 
-    func downloadBoardImage(_ reference: MediaReference) async throws -> URL {
+    func downloadBoardImage(_ reference: MediaReference, kind: MediaKind) async throws -> URL {
         throw AppError.underlying("プレビューでは画像を取得できません")
     }
 

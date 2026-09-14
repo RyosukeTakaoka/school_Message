@@ -141,8 +141,8 @@ protocol ChatBackend: Sendable {
     /// (掲示板は暗号化しないため, 写真もチャットとは別の平文のフィールドに保存される).
     func createBoardPost(in threadID: ThreadID, body: String, image: OutgoingMessage.LocalMedia?) async throws -> BoardPost
 
-    /// 掲示板の写真本体をダウンロードする. 暗号化していないため復号は不要.
-    func downloadBoardImage(_ reference: MediaReference) async throws -> URL
+    /// 掲示板の写真・GIF本体をダウンロードする. 暗号化していないため復号は不要.
+    func downloadBoardImage(_ reference: MediaReference, kind: MediaKind) async throws -> URL
 
     /// 掲示板への新着通知を受け取れるようにする(冪等). 通知の設定でオンにしたときに呼ぶ.
     func configureBoardSubscription() async throws

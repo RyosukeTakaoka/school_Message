@@ -664,7 +664,11 @@ extension CloudKitBackend {
                 duration: media.duration,
                 byteCount: media.byteCount
             )
-            content = media.kind == .image ? .image(attachment) : .video(attachment)
+            switch media.kind {
+            case .image: content = .image(attachment)
+            case .gif: content = .gif(attachment)
+            case .video: content = .video(attachment)
+            }
         } else {
             content = .text(payload.text ?? "")
         }
@@ -690,7 +694,11 @@ extension CloudKitBackend {
             return game.previewText
         }
         if let media = payload.media {
-            return media.kind == .image ? String(localized: "写真") : String(localized: "動画")
+            switch media.kind {
+            case .image: return String(localized: "写真")
+            case .gif: return String(localized: "GIF")
+            case .video: return String(localized: "動画")
+            }
         }
         return payload.text ?? ""
     }

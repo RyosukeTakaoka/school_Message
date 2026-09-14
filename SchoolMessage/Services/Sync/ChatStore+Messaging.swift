@@ -232,6 +232,28 @@ extension ChatStore {
         }
     }
 
+    /// GIF を送る(Giphy から選んだもの). 圧縮はせず, サムネイルだけ作ってから
+    /// キューに積む(`MediaProcessor.prepareGif` 参照).
+    func sendGif(
+        originalData: Data,
+        in conversationID: ConversationID,
+        replyTo: ReplyReference? = nil
+    ) async {
+        guard let me = currentUserID else { return }
+        do {
+            let media = try await processor.prepareGif(originalData: originalData)
+            let outgoing = OutgoingMessage(
+                conversationID: conversationID,
+                senderID: me,
+                body: .media(media),
+                replyTo: replyTo
+            )
+            await enqueueAndShow(outgoing)
+        } catch {
+            banner = AppError.wrap(error)
+        }
+    }
+
     /// 動画を送る. 再エンコードに時間がかかるので, 完了後にキューへ積む.
     func sendVideo(
         sourceURL: URL,
@@ -475,9 +497,12 @@ extension ChatStore {
         switch outgoing.body {
         case .text(let text): preview = text
         case .game(let snapshot): preview = snapshot.previewText
-        case .media(let media): preview = media.kind == .image
-            ? String(localized: "写真")
-            : String(localized: "動画")
+        case .media(let media):
+            switch media.kind {
+            case .image: preview = String(localized: "写真")
+            case .gif: preview = String(localized: "GIF")
+            case .video: preview = String(localized: "動画")
+            }
         }
         conversations[index].lastMessage = MessageSummary(
             senderID: outgoing.senderID,

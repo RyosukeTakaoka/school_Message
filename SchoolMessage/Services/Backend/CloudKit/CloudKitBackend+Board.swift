@@ -127,6 +127,7 @@ extension CloudKitBackend {
             record[CKSchema.BoardPost.imageWidth] = NSNumber(value: image.pixelWidth)
             record[CKSchema.BoardPost.imageHeight] = NSNumber(value: image.pixelHeight)
             record[CKSchema.BoardPost.imageByteCount] = NSNumber(value: image.byteCount)
+            record[CKSchema.BoardPost.imageKind] = image.kind.rawValue as CKRecordValue
         }
 
         do {
@@ -141,6 +142,7 @@ extension CloudKitBackend {
         if let image {
             mediaStore.remove(at: image.fileURL)
             post.image = BoardImageAttachment(
+                kind: image.kind,
                 remote: MediaReference(
                     recordName: post.id.rawValue,
                     fieldName: CKSchema.BoardPost.imageAsset,
@@ -157,12 +159,12 @@ extension CloudKitBackend {
         return post
     }
 
-    /// 掲示板の写真本体をダウンロードする.
+    /// 掲示板の写真・GIF本体をダウンロードする.
     ///
     /// チャットの `downloadMedia` と違い, 会話鍵での復号は行わない
     /// (掲示板の写真はそもそも暗号化して保存していないため).
-    func downloadBoardImage(_ reference: MediaReference) async throws -> URL {
-        let destination = mediaStore.cachedURL(for: reference, kind: .image)
+    func downloadBoardImage(_ reference: MediaReference, kind: MediaKind) async throws -> URL {
+        let destination = mediaStore.cachedURL(for: reference, kind: kind)
         if mediaStore.fileExists(at: destination) { return destination }
 
         let record: CKRecord
@@ -271,7 +273,10 @@ extension CloudKitBackend {
         var image: BoardImageAttachment?
         if let width = record[CKSchema.BoardPost.imageWidth] as? Int,
            let height = record[CKSchema.BoardPost.imageHeight] as? Int {
+            // 古いレコード(imageKind フィールドが無い時期の投稿)は写真として扱う.
+            let kind = (record[CKSchema.BoardPost.imageKind] as? String).flatMap(MediaKind.init(rawValue:)) ?? .image
             image = BoardImageAttachment(
+                kind: kind,
                 remote: MediaReference(
                     recordName: record.recordID.recordName,
                     fieldName: CKSchema.BoardPost.imageAsset,
@@ -309,7 +314,8 @@ extension CloudKitBackend {
         CKSchema.BoardPost.imageThumbnail,
         CKSchema.BoardPost.imageWidth,
         CKSchema.BoardPost.imageHeight,
-        CKSchema.BoardPost.imageByteCount
+        CKSchema.BoardPost.imageByteCount,
+        CKSchema.BoardPost.imageKind
     ]
     /// 1 スレッドあたりの書き込み取得数の上限.
     private static var boardPostLimit: Int { 500 }

@@ -114,7 +114,11 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
                 duration: media.duration,
                 byteCount: media.byteCount
             )
-            content = media.kind == .image ? .image(attachment) : .video(attachment)
+            switch media.kind {
+            case .image: content = .image(attachment)
+            case .gif: content = .gif(attachment)
+            case .video: content = .video(attachment)
+            }
         }
         return Message(
             id: id,

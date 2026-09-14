@@ -58,7 +58,10 @@ struct BoardThread: Identifiable, Hashable, Sendable {
 /// (`BoardThread` のコメント参照)復号の手立てを持つ必要が無く, もっと単純な形で
 /// 済むため. 動画には対応しない(掲示板は軽い読み物の場という位置づけのため).
 struct BoardImageAttachment: Hashable, Sendable {
-    /// 本体(圧縮済み JPEG)への参照. 暗号化していないので, 誰でも直接開ける.
+    /// 写真か GIF か. 古いレコード(このフィールドが無い時期に投稿されたもの)は
+    /// `.image` として扱う(`CloudKitBackend+Board.swift` 参照).
+    var kind: MediaKind = .image
+    /// 本体(圧縮済み JPEG, または GIF)への参照. 暗号化していないので, 誰でも直接開ける.
     ///
     /// 各プロパティに `= nil` を明示しているのは, これが無いと合成される
     /// memberwise イニシャライザがオプショナル型でも省略不可の引数になり,

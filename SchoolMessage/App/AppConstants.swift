@@ -82,6 +82,18 @@ enum AppConstants {
         static let sendingStallThreshold: TimeInterval = 60
     }
 
+    enum ExternalServices {
+        /// Giphy の GIF 検索 API キー.
+        ///
+        /// Xcode の Info.plist(`Config/Info.plist`)に `GiphyAPIKey` として
+        /// 設定する(取得方法は docs/SETUP.md を参照). 未設定のままでもビルドは
+        /// 通り, GIF 検索を開いたときにエラーで案内するだけにしてある
+        /// (アプリ全体が起動できなくなるのを避けるため).
+        static var giphyAPIKey: String {
+            Bundle.main.object(forInfoDictionaryKey: "GiphyAPIKey") as? String ?? ""
+        }
+    }
+
     enum Validation {
         static let displayNameMaxLength = 24
         static let handleMinLength = 3

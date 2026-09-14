@@ -13,6 +13,7 @@ DEFINE SCHEMA
         imageAsset      ASSET,
         imageByteCount  INT64,
         imageHeight     INT64,
+        imageKind       STRING,
         imageThumbnail  BYTES,
         imageWidth      INT64,
         thread          REFERENCE QUERYABLE,
