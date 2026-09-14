@@ -26,6 +26,7 @@ struct MediaViewerScreen: View {
     }
 
     @State private var saveState: SaveState = .idle
+    @State private var isZoomedIn = false
 
     private var loader: MediaLoader { environment.mediaLoader }
 
@@ -35,22 +36,16 @@ struct MediaViewerScreen: View {
 
             content
         }
+        .swipeToDismiss(isZoomedIn: isZoomedIn) { dismiss() }
         .overlay(alignment: .topLeading) {
             if case .ready = loader.state(for: attachment) {
                 saveButton
             }
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.largeTitle)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .white.opacity(0.25))
-            }
-            .padding()
-            .accessibilityLabel(String(localized: "閉じる"))
+            CircleIconButton(systemImage: "xmark") { dismiss() }
+                .padding()
+                .accessibilityLabel(String(localized: "閉じる"))
         }
         .overlay(alignment: .bottom) {
             footer
@@ -85,16 +80,12 @@ struct MediaViewerScreen: View {
                     ProgressView()
                         .tint(.white)
                 case .saved:
-                    Image(systemName: "checkmark.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .white.opacity(0.25))
+                    Image(systemName: "checkmark")
                 default:
-                    Image(systemName: "square.and.arrow.down.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .white.opacity(0.25))
+                    Image(systemName: "square.and.arrow.down")
                 }
             }
-            .font(.largeTitle)
+            .viewerControlBadge()
         }
         .disabled(saveState == .saving)
         .padding()
@@ -131,9 +122,9 @@ struct MediaViewerScreen: View {
         case .ready(let url):
             switch attachment.kind {
             case .image:
-                ZoomableImageView(url: url)
+                ZoomableImageView(url: url, isZoomedIn: $isZoomedIn)
             case .gif:
-                ZoomableImageView(url: url, kind: .gif)
+                ZoomableImageView(url: url, kind: .gif, isZoomedIn: $isZoomedIn)
             case .video:
                 FullScreenVideoPlayer(url: url)
             }
@@ -222,6 +213,9 @@ struct ZoomableImageView: UIViewRepresentable {
     let url: URL
     /// GIF ならアニメーションしたまま(ImageIO で全コマをデコードして)表示する.
     var kind: MediaKind = .image
+    /// 等倍より拡大されているか. 呼び出し側(`MediaViewerScreen` 等)が
+    /// これを見て, スワイプで閉じる操作と拡大中のパン操作が衝突しないようにする.
+    var isZoomedIn: Binding<Bool> = .constant(false)
 
     private static let maximumZoomScale: CGFloat = 4
     private static let doubleTapZoomScale: CGFloat = 2.5
@@ -266,6 +260,10 @@ struct ZoomableImageView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIScrollView, context: Context) {
+        // `Coordinator` は使い回されるが, この構造体自体は描画のたびに新しく
+        // 作られる. `isZoomedIn` の書き込み先を常に最新にしておく.
+        context.coordinator.parent = self
+
         // 大きな画像でメモリを使い切らないよう, 表示直前に読み込む.
         if context.coordinator.loadedURL != url {
             context.coordinator.loadedURL = url
@@ -276,20 +274,33 @@ struct ZoomableImageView: UIViewRepresentable {
                 context.coordinator.imageView?.image = UIImage(contentsOfFile: url.path)
             }
             uiView.setZoomScale(1, animated: false)
+            isZoomedIn.wrappedValue = false
         }
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(parent: self)
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
+        var parent: ZoomableImageView
         var imageView: UIImageView?
         var loadedURL: URL?
         var zoomScale: CGFloat = 2.5
 
+        init(parent: ZoomableImageView) {
+            self.parent = parent
+        }
+
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             imageView
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            let zoomedIn = scrollView.zoomScale > scrollView.minimumZoomScale + 0.01
+            if parent.isZoomedIn.wrappedValue != zoomedIn {
+                parent.isZoomedIn.wrappedValue = zoomedIn
+            }
         }
 
         @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {

@@ -345,28 +345,23 @@ private struct BoardImageViewerScreen: View {
 
     @State private var loadState: LoadState = .loading
     @State private var saveState: SaveState = .idle
+    @State private var isZoomedIn = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
             content
         }
+        .swipeToDismiss(isZoomedIn: isZoomedIn) { dismiss() }
         .overlay(alignment: .topLeading) {
             if case .ready = loadState {
                 saveButton
             }
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.largeTitle)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .white.opacity(0.25))
-            }
-            .padding()
-            .accessibilityLabel(String(localized: "閉じる"))
+            CircleIconButton(systemImage: "xmark") { dismiss() }
+                .padding()
+                .accessibilityLabel(String(localized: "閉じる"))
         }
         .statusBarHidden()
         .task { await load() }
@@ -390,7 +385,7 @@ private struct BoardImageViewerScreen: View {
     private var content: some View {
         switch loadState {
         case .ready(let url):
-            ZoomableImageView(url: url, kind: image.kind)
+            ZoomableImageView(url: url, kind: image.kind, isZoomedIn: $isZoomedIn)
         case .loading:
             ZStack {
                 if let data = image.thumbnailData, let uiImage = UIImage(data: data) {
@@ -427,16 +422,12 @@ private struct BoardImageViewerScreen: View {
                 case .saving:
                     ProgressView().tint(.white)
                 case .saved:
-                    Image(systemName: "checkmark.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .white.opacity(0.25))
+                    Image(systemName: "checkmark")
                 default:
-                    Image(systemName: "square.and.arrow.down.circle.fill")
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .white.opacity(0.25))
+                    Image(systemName: "square.and.arrow.down")
                 }
             }
-            .font(.largeTitle)
+            .viewerControlBadge()
         }
         .disabled(saveState == .saving)
         .padding()
