@@ -16,16 +16,11 @@ platform :ios do
       build_number: Time.now.strftime("%Y%m%d%H%M")
     )
 
-    # アプリのビルド
+    # アプリのビルド（Xcodeの署名設定をRelease / App Store用に強制上書き）
     build_app(
       scheme: "school_Message",
       export_method: "app-store",
-      export_options: {
-        signingStyle: "manual",
-        provisioningProfiles: {
-          "app.takaoka.com.schoolmessage" => "SchoolMessage" # プロファイル名またはBundle IDマッピング
-        }
-      }
+      xcargs: "CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' PROVISIONING_PROFILE_SPECIFIER='SchoolMessage'"
     )
 
     # TestFlightへアップロード
