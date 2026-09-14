@@ -3,7 +3,7 @@ name: Deploy to App Store Connect
 on:
   push:
     branches:
-      - main
+      - claude/ipad-school-chat-app-q1ce5n
 
 jobs:
   deploy:
