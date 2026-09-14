@@ -681,6 +681,7 @@ extension CloudKitBackend {
             createdAt: raw.sentAt,
             deliveryState: .sent,
             replyTo: payload.replyTo,
+            mentions: payload.mentions ?? [],
             modifiedAt: raw.modifiedAt,
             isRead: true   // 既読判定は会話の lastReadAt との比較で上位層が付け直す
         )
@@ -723,7 +724,8 @@ extension CloudKitBackend {
             }
             payload = MessagePayload(
                 text: String(trimmed.prefix(AppConstants.Validation.messageTextMaxLength)),
-                replyTo: outgoing.replyTo
+                replyTo: outgoing.replyTo,
+                mentions: outgoing.mentions
             )
         case .media(let media):
             payload = MessagePayload(media: media.metadata, replyTo: outgoing.replyTo)

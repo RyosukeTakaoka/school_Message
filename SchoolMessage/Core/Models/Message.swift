@@ -137,6 +137,9 @@ struct Message: Identifiable, Hashable, Sendable {
     /// 返信先(引用). 通常のメッセージでは nil.
     var replyTo: ReplyReference?
 
+    /// 本文中で @ 付きでメンションした相手. グループでのみ使う.
+    var mentions: [UserID]
+
     /// 送信が取り消されたか.
     ///
     /// 取り消してもレコード自体は残し, 中身(本文・写真・動画)だけを消す.
@@ -167,6 +170,7 @@ struct Message: Identifiable, Hashable, Sendable {
         createdAt: Date = .now,
         deliveryState: MessageDeliveryState = .sent,
         replyTo: ReplyReference? = nil,
+        mentions: [UserID] = [],
         isUnsent: Bool = false,
         modifiedAt: Date? = nil,
         isRead: Bool = true
@@ -178,6 +182,7 @@ struct Message: Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
         self.deliveryState = deliveryState
         self.replyTo = replyTo
+        self.mentions = mentions
         self.isUnsent = isUnsent
         self.modifiedAt = modifiedAt
         self.isRead = isRead
@@ -218,6 +223,13 @@ struct MessagePayload: Hashable, Sendable, Codable {
     /// という 2 点のため. 古い版のアプリが読んでも, 未知のキーとして無視される.
     var replyTo: ReplyReference?
 
+    /// 本文中で @ 付きでメンションした相手.
+    ///
+    /// `replyTo` と同じ理由(平文フィールドを増やさない, 古い版でも無視できる)で
+    /// CloudKit のフィールドではなくここに入れる. Optional なのは,
+    /// この項目が無い古いメッセージの payload も読めるようにするため.
+    var mentions: [UserID]?
+
     /// 送信取り消し済みか.
     ///
     /// 取り消すと, このフラグだけを立てた payload で元のレコードを上書きし,
@@ -233,12 +245,14 @@ struct MessagePayload: Hashable, Sendable, Codable {
         text: String? = nil,
         media: MediaMetadata? = nil,
         replyTo: ReplyReference? = nil,
+        mentions: [UserID]? = nil,
         isUnsent: Bool? = nil,
         game: GameSnapshot? = nil
     ) {
         self.text = text
         self.media = media
         self.replyTo = replyTo
+        self.mentions = mentions
         self.isUnsent = isUnsent
         self.game = game
     }
