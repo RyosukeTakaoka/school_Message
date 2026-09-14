@@ -29,6 +29,8 @@ final class ChatStore {
     private(set) var friends: [UserProfile] = []
     /// 取得済みユーザの索引. 拡張からも書き込むため setter を絞っていない.
     var profilesByID: [UserID: UserProfile] = [:]
+    /// 自分の CHIP 残高. 取得できるまでは nil(`ChatStore+ChipGames.swift` が更新する).
+    var myWallet: PlayerWallet?
     // 以下 3 つは `ChatStore+Messaging.swift` の拡張からも更新するため
     // `private(set)` にしていない. View 側からは読み取り専用として扱い,
     // 変更は必ずストアのメソッド経由で行うこと.
@@ -192,6 +194,7 @@ final class ChatStore {
 
         await refreshConversations()
         await refreshFriends()
+        await refreshWallet()
         flushOutbox()
 
         await configurePushSubscriptions()
@@ -231,6 +234,7 @@ final class ChatStore {
         pollTask?.cancel()
         await crypto.clearCachedConversationKeys()
         myProfile = nil
+        myWallet = nil
         conversations = []
         friends = []
         messagesByConversation = [:]

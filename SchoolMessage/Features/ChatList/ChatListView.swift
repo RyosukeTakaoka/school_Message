@@ -13,6 +13,7 @@ struct ChatListView: View {
     var onShowFriends: () -> Void
     var onCreateGroup: () -> Void
     var onShowBoard: () -> Void
+    var onShowRanking: () -> Void
     var onShowStreetPass: () -> Void
     var onShowProfile: () -> Void
 
@@ -24,6 +25,7 @@ struct ChatListView: View {
             // 見た目で置く. 以前は右上のアイコンだけだったため見つけにくかった.
             Section {
                 boardEntryRow
+                rankingEntryRow
             }
 
             Section {
@@ -137,6 +139,37 @@ struct ChatListView: View {
         .accessibilityHint(String(localized: "みんなが読める掲示板を開きます"))
     }
 
+    /// CHIP ランキングへの入り口. 掲示板と同じ「みんなが見る場所」なので隣に置く.
+    private var rankingEntryRow: some View {
+        Button(action: onShowRanking) {
+            HStack(spacing: AppConstants.Layout.standardSpacing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.orange.gradient)
+                        .frame(width: AppConstants.Layout.avatarMedium, height: AppConstants.Layout.avatarMedium)
+                    Text("🪙")
+                        .font(.system(size: AppConstants.Layout.avatarMedium * 0.45))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CHIPランキング")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    Text("みんなの持ちCHIPを見る(いまは \(ChipRules.formatted(store.chipBalance)))")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.subdued)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.subdued)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "CHIPランキング"))
+    }
+
     private var emptyState: some View {
         ContentUnavailableView {
             Label(String(localized: "まだチャットがありません"), systemImage: "bubble.left")
@@ -248,6 +281,7 @@ struct ChatListRow: View {
             onShowFriends: {},
             onCreateGroup: {},
             onShowBoard: {},
+            onShowRanking: {},
             onShowStreetPass: {},
             onShowProfile: {}
         )

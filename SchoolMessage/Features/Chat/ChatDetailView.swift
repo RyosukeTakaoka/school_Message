@@ -128,12 +128,27 @@ struct ChatDetailView: View {
             if !availableGames.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        ForEach(availableGames) { kind in
-                            Button {
-                                activeGame = kind
-                            } label: {
-                                Label(kind.title, systemImage: kind.symbolName)
+                        // CHIP を使わない遊びと使う遊びを分けて出す.
+                        // 使う遊びの側には, いま持っている CHIP も添える.
+                        Section {
+                            ForEach(availableGames.filter { !$0.usesChip }) { kind in
+                                Button {
+                                    activeGame = kind
+                                } label: {
+                                    Label(kind.title, systemImage: kind.symbolName)
+                                }
                             }
+                        }
+                        Section {
+                            ForEach(availableGames.filter(\.usesChip)) { kind in
+                                Button {
+                                    activeGame = kind
+                                } label: {
+                                    Label(kind.title, systemImage: kind.symbolName)
+                                }
+                            }
+                        } header: {
+                            Text("🪙 \(ChipRules.formatted(store.chipBalance))")
                         }
                     } label: {
                         Label(String(localized: "対戦"), systemImage: "gamecontroller")
@@ -159,6 +174,14 @@ struct ChatDetailView: View {
                 ColorBattleGameView(conversationID: conversation.id)
             case .daifugo:
                 DaifugoGameView(conversationID: conversation.id)
+            case .indianPoker:
+                IndianPokerGameView(conversationID: conversation.id)
+            case .doubt:
+                DoubtGameView(conversationID: conversation.id)
+            case .blackjack:
+                BlackjackGameView(conversationID: conversation.id)
+            case .chinchiro:
+                ChinchiroGameView(conversationID: conversation.id)
             }
         }
         .fullScreenCover(item: $viewingMedia) { attachment in

@@ -124,6 +124,16 @@ QUERYABLE にしてください（Development 環境で一度どれかのメッ�
 なります（既存の写真投稿や、チャットでの GIF 送信には影響しません。チャットの
 GIF はメッセージ本文と同じ暗号化フィールドに載るため、スキーマの追加が不要です）。
 
+アプリ内ゲームのポイント「CHIP」とそのランキングを使うには、`PlayerWallet`
+レコードタイプが必要です。フィールドは `ownerID`（String）・`balance`（Int(64)）・
+`bankruptAt`（Date/Time）・`settledGameIDs`（String のリスト）・`updatedAt`（Date/Time）で、
+**`balance` に QUERYABLE と SORTABLE が必須**です（ランキングの並べ替えに使うため）。
+これも Development 環境で一度ゲームを遊んでレコードを自動生成させてから、
+インデックスを設定して Production へ「Deploy Schema Changes」してください。
+設定していない間は、CHIP を使うゲーム（インディアンポーカー・ダウト・
+ブラックジャック・チンチロ）とランキングだけが使えず、チャットや既存の
+ゲーム（オセロ・色勝負・大富豪）には影響しません。
+
 **セキュリティロールは既定のまま**にしてください。
 理由は [`SECURITY.md`](SECURITY.md#書き込み権限) にあります。
 
