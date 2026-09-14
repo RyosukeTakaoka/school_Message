@@ -14,21 +14,48 @@ extension ChatStore {
         myWallet = wallet
     }
 
-    /// いま CHIP を賭けて遊べるか(破産中は遊べない).
+    /// いま CHIP を賭けて遊べるか(足りなければ遊べない).
     var canPlayChipGames: Bool {
         guard let myWallet else { return false }
-        return !myWallet.isBankrupt() && myWallet.balance >= ChipRules.minBet
+        return !myWallet.isBankrupt()
     }
 
     var chipBalance: Int { myWallet?.balance ?? 0 }
 
-    /// 破産中に出す「いつ戻るか」の案内.
+    /// 復活のルーレットを回せる状態か.
+    var isRevivalDue: Bool {
+        myWallet?.isRevivalDue() ?? false
+    }
+
+    /// CHIP が足りないときに出す案内.
     var bankruptNotice: String? {
-        guard let myWallet, myWallet.isBankrupt(), let revivalDate = myWallet.revivalDate() else { return nil }
+        guard let myWallet, myWallet.isBankrupt() else { return nil }
+        if myWallet.isRevivalDue() {
+            return String(localized: "CHIPが0です。復活ルーレットを回せます")
+        }
+        guard let revivalDate = myWallet.revivalDate() else {
+            return String(localized: "CHIPが0です")
+        }
         let formatter = DateFormatter()
         formatter.locale = .current
         formatter.setLocalizedDateFormatFromTemplate("Md")
-        return String(localized: "CHIPが0になりました。\(formatter.string(from: revivalDate))に\(ChipRules.formatted(PlayerWallet.initialBalance))で復活します")
+        return String(localized: "CHIPが0になりました。\(formatter.string(from: revivalDate))に復活ルーレットを回せます")
+    }
+
+    /// 復活のルーレットを回して受け取る. 回せる状態でなければ nil.
+    ///
+    /// 出る額は「0 になった日時」から決まっているので, 回し直しはできない.
+    /// 戻り値は当たった額(画面の演出に使う).
+    func claimRevivalIfDue() async -> Int? {
+        guard let wallet = myWallet, wallet.isRevivalDue() else { return nil }
+        let amount = wallet.revivalAmount
+        do {
+            myWallet = try await backend.claimChipRevival()
+            return amount
+        } catch {
+            banner = AppError.wrap(error)
+            return nil
+        }
     }
 
     /// 決着した対戦の CHIP を自分のぶんだけ反映する.

@@ -141,8 +141,8 @@ actor InMemoryChatBackend: ChatBackend {
     // MARK: - CHIP
 
     func fetchMyWallet() async throws -> PlayerWallet {
-        if let refreshed = walletsByUser[me.id]?.refreshedIfNeeded() {
-            walletsByUser[me.id] = refreshed
+        if let stamped = walletsByUser[me.id]?.stampingBankruptcyIfNeeded() {
+            walletsByUser[me.id] = stamped
         }
         let wallet = walletsByUser[me.id] ?? PlayerWallet(ownerID: me.id)
         walletsByUser[me.id] = wallet
@@ -155,6 +155,14 @@ actor InMemoryChatBackend: ChatBackend {
         let updated = current.applying(delta: delta, gameID: gameID)
         walletsByUser[me.id] = updated
         return updated
+    }
+
+    func claimChipRevival() async throws -> PlayerWallet {
+        let current = try await fetchMyWallet()
+        guard current.isRevivalDue() else { return current }
+        let claimed = current.claimingRevival()
+        walletsByUser[me.id] = claimed
+        return claimed
     }
 
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry] {

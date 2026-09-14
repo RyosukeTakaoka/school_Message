@@ -55,7 +55,7 @@ protocol ChatBackend: Sendable {
 
     // MARK: CHIP(アプリ内ゲームのポイント)
 
-    /// 自分の残高. まだ無ければ初期値で作る. 復活日を過ぎていればここで戻す.
+    /// 自分の残高. まだ無ければ初期値で作る.
     func fetchMyWallet() async throws -> PlayerWallet
 
     /// 残高に差分を足す.
@@ -64,6 +64,12 @@ protocol ChatBackend: Sendable {
     /// 消えないようにするため(実装側で競合時に取り直して当て直す).
     /// `gameID` を渡すと, 同じ対戦で二重に増減しないよう記録される.
     func applyChipDelta(_ delta: Int, gameID: String?) async throws -> PlayerWallet
+
+    /// 復活のルーレットを回して受け取る(復活日を過ぎているときだけ効く).
+    ///
+    /// 出る額は「持ち主 + 0 になった日時」から決まるので, 何度呼んでも
+    /// 同じ結果になる(引き直しはできない).
+    func claimChipRevival() async throws -> PlayerWallet
 
     /// CHIP ランキング(残高の多い順).
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry]

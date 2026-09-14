@@ -18,11 +18,36 @@ extension CloudKitBackend {
         let record = try await fetchOrCreateWalletRecord(for: userID)
         let wallet = Self.wallet(from: record, ownerID: userID)
 
-        // 復活日を過ぎていればここで満額に戻す(「今すぐ戻す」操作は用意しない).
-        guard let refreshed = wallet.refreshedIfNeeded() else { return wallet }
-        Self.write(refreshed, into: record)
-        guard let saved = try? await database.save(record) else { return refreshed }
+        // 0 になった起点が抜けていれば補う(抜けていると復活日が決まらないため).
+        guard let stamped = wallet.stampingBankruptcyIfNeeded() else { return wallet }
+        Self.write(stamped, into: record)
+        guard let saved = try? await database.save(record) else { return stamped }
         return Self.wallet(from: saved, ownerID: userID)
+    }
+
+    func claimChipRevival() async throws -> PlayerWallet {
+        let userID = try await currentUserID()
+        var attempt = 0
+
+        while true {
+            let record = try await fetchOrCreateWalletRecord(for: userID)
+            let current = Self.wallet(from: record, ownerID: userID)
+            // まだ回せない(復活日前 / すでに受け取り済み)なら何もしない.
+            guard current.isRevivalDue() else { return current }
+
+            Self.write(current.claimingRevival(), into: record)
+            do {
+                let saved = try await database.save(record)
+                return Self.wallet(from: saved, ownerID: userID)
+            } catch let error as CKError where error.code == .serverRecordChanged {
+                attempt += 1
+                guard attempt < AppConstants.Timing.maxRetryAttempts else {
+                    throw CloudKitErrorMapping.appError(from: error)
+                }
+            } catch {
+                throw CloudKitErrorMapping.appError(from: error)
+            }
+        }
     }
 
     func applyChipDelta(_ delta: Int, gameID: String?) async throws -> PlayerWallet {

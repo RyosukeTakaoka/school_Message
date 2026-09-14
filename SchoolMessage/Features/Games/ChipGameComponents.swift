@@ -85,6 +85,7 @@ struct ChipGameStartPrompt: View {
     let onCreate: (Int) -> Void
 
     @State private var bet = ChipRules.minBet
+    @State private var isShowingRevivalWheel = false
 
     private var store: ChatStore { environment.store }
 
@@ -108,6 +109,13 @@ struct ChipGameStartPrompt: View {
                         .font(.footnote)
                         .foregroundStyle(Palette.failure)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    if store.isRevivalDue {
+                        Button(String(localized: "復活ルーレットを回す")) {
+                            isShowingRevivalWheel = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     ChipBetPicker(maxBet: kind.maxBet ?? ChipRules.defaultMaxBet, bet: $bet)
 
@@ -124,6 +132,9 @@ struct ChipGameStartPrompt: View {
                 }
             }
             .padding(AppConstants.Layout.standardSpacing)
+        }
+        .sheet(isPresented: $isShowingRevivalWheel) {
+            ChipRevivalWheelView()
         }
     }
 }

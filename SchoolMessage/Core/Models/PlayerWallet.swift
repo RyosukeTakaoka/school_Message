@@ -62,33 +62,49 @@ extension PlayerWallet {
         return calendar.date(byAdding: .day, value: Self.bankruptRestDays, to: startOfBankruptDay)
     }
 
-    /// いま CHIP を使うゲームで遊べない状態か.
-    func isBankrupt(now: Date = .now, calendar: Calendar = .current) -> Bool {
-        guard balance < ChipRules.minBet else { return false }
-        guard let revivalDate = revivalDate(calendar: calendar) else { return true }
-        return now < revivalDate
+    /// CHIP が足りず, ゲームに参加できない状態か.
+    func isBankrupt() -> Bool {
+        balance < ChipRules.minBet
     }
 
-    /// 時間の経過で変わるところを整える. 変える必要がなければ nil.
+    /// 復活のルーレットを回せる状態か.
+    func isRevivalDue(now: Date = .now, calendar: Calendar = .current) -> Bool {
+        guard bankruptAt != nil, let revivalDate = revivalDate(calendar: calendar) else { return false }
+        return now >= revivalDate
+    }
+
+    /// 0 になったのに起点が記録されていなければ記録する. 変える必要がなければ nil.
     ///
-    /// - 復活日を過ぎていれば満額に戻す(「今すぐ戻す」操作は用意しない)
-    /// - 0 になったのに起点が記録されていなければ, ここで記録する
-    ///   (記録が無いままだと復活日が決まらず, ずっと遊べなくなってしまうため)
-    func refreshedIfNeeded(now: Date = .now, calendar: Calendar = .current) -> PlayerWallet? {
-        if bankruptAt != nil, let revivalDate = revivalDate(calendar: calendar), now >= revivalDate {
-            var revived = self
-            revived.balance = Self.initialBalance
-            revived.bankruptAt = nil
-            revived.updatedAt = now
-            return revived
-        }
-        if balance < ChipRules.minBet, bankruptAt == nil {
-            var stamped = self
-            stamped.bankruptAt = now
-            stamped.updatedAt = now
-            return stamped
-        }
-        return nil
+    /// 記録が無いままだと復活日が決まらず, ずっと遊べなくなってしまうための保険.
+    func stampingBankruptcyIfNeeded(now: Date = .now) -> PlayerWallet? {
+        guard balance < ChipRules.minBet, bankruptAt == nil else { return nil }
+        var stamped = self
+        stamped.bankruptAt = now
+        stamped.updatedAt = now
+        return stamped
+    }
+
+    /// 今回の復活で出る額.
+    ///
+    /// 回すたびに変わると, アプリを落として引き直す(いわゆるリセマラ)ができて
+    /// しまうため, **持ち主と「0 になった日時」から決まる値**にしてある.
+    /// 同じ破産 1 回につき結果はひとつで, 何度開き直しても変わらない.
+    var revivalAmount: Int {
+        guard let bankruptAt else { return Self.initialBalance }
+        return ChipRevivalWheel.amount(
+            seed: "\(ownerID.rawValue)#\(Int(bankruptAt.timeIntervalSince1970))"
+        )
+    }
+
+    /// ルーレットの結果を受け取った財布を返す.
+    ///
+    /// はずれ(遊べる額に届かない)ときは, その時点から数え直してまた待つ.
+    func claimingRevival(now: Date = .now) -> PlayerWallet {
+        var next = self
+        next.balance = revivalAmount
+        next.bankruptAt = next.balance < ChipRules.minBet ? now : nil
+        next.updatedAt = now
+        return next
     }
 
     /// 差分を適用した財布を返す(残高は 0 未満にしない).
@@ -117,6 +133,59 @@ extension PlayerWallet {
 
     func hasSettled(gameID: String) -> Bool {
         settledGameIDs.contains(gameID)
+    }
+}
+
+/// CHIP が 0 になったあとの「復活ルーレット」.
+///
+/// 以前は必ず 1,000 CHIP に戻していたが, それだと戻ってくる額が分かりきっていて
+/// 面白みが無い. 多くは 0〜1,000 の間に収まるようにしつつ,
+/// ごくまれに **0(はずれ)** と **2,000(初期の 2 倍)** が出るようにしてある.
+enum ChipRevivalWheel {
+
+    struct Slot: Hashable, Sendable, Identifiable {
+        let amount: Int
+        /// 出やすさ. 全部足すと 100 になるので, そのまま「％」として読める.
+        let weight: Int
+
+        var id: Int { amount }
+    }
+
+    /// 表示する順番(少ない順. 最後がジャックポット).
+    static let slots: [Slot] = [
+        Slot(amount: 0, weight: 2),
+        Slot(amount: 100, weight: 5),
+        Slot(amount: 200, weight: 8),
+        Slot(amount: 300, weight: 10),
+        Slot(amount: 400, weight: 12),
+        Slot(amount: 500, weight: 14),
+        Slot(amount: 600, weight: 14),
+        Slot(amount: 700, weight: 12),
+        Slot(amount: 800, weight: 10),
+        Slot(amount: 900, weight: 6),
+        Slot(amount: PlayerWallet.initialBalance, weight: 4),
+        Slot(amount: PlayerWallet.initialBalance * 2, weight: 3)
+    ]
+
+    /// 種から決まる当たり. 同じ種なら何度呼んでも同じ額になる.
+    static func amount(seed: String) -> Int {
+        var generator = SeededGenerator(seed: ColorBattleSnapshot.hash(seed))
+        let total = slots.reduce(0) { $0 + $1.weight }
+        guard total > 0 else { return PlayerWallet.initialBalance }
+        var roll = Int(generator.next() % UInt64(total))
+        for slot in slots {
+            roll -= slot.weight
+            if roll < 0 { return slot.amount }
+        }
+        return slots.last?.amount ?? PlayerWallet.initialBalance
+    }
+
+    /// 当たりの呼び方(画面に出す).
+    static func title(for amount: Int) -> String {
+        if amount >= PlayerWallet.initialBalance * 2 { return String(localized: "大当たり!") }
+        if amount >= PlayerWallet.initialBalance { return String(localized: "満額!") }
+        if amount < ChipRules.minBet { return String(localized: "はずれ…") }
+        return String(localized: "復活!")
     }
 }
 

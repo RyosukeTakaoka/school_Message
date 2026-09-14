@@ -11,6 +11,7 @@ struct ChipRankingView: View {
 
     @State private var entries: [ChipRankingEntry] = []
     @State private var isLoading = false
+    @State private var isShowingRevivalWheel = false
 
     private var store: ChatStore { environment.store }
     private var me: UserID? { store.currentUserID }
@@ -20,6 +21,15 @@ struct ChipRankingView: View {
             List {
                 Section {
                     myStandingRow
+                    if store.isRevivalDue {
+                        Button(String(localized: "復活ルーレットを回す")) {
+                            isShowingRevivalWheel = true
+                        }
+                    } else if let notice = store.bankruptNotice {
+                        Text(notice)
+                            .font(.footnote)
+                            .foregroundStyle(Palette.subdued)
+                    }
                 }
 
                 Section {
@@ -51,6 +61,9 @@ struct ChipRankingView: View {
             }
             .refreshable { await load() }
             .task { await load() }
+            .sheet(isPresented: $isShowingRevivalWheel, onDismiss: { Task { await load() } }) {
+                ChipRevivalWheelView()
+            }
             .safeAreaInset(edge: .top) {
                 if let error = store.banner {
                     ErrorBannerView(error: error) { store.setBanner(nil) }

@@ -96,6 +96,7 @@ private struct MainSplitView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var presentedSheet: Sheet?
     @State private var isShowingBoard = false
+    @State private var isShowingRevivalWheel = false
 
     private enum Sheet: String, Identifiable {
         case friends, createGroup, streetPass, profile, chipRanking
@@ -151,6 +152,14 @@ private struct MainSplitView: View {
         .fullScreenCover(isPresented: $isShowingBoard) {
             BoardView()
         }
+        // CHIP が 0 のまま復活日を迎えたら, 開いた時点でルーレットを出す.
+        // 閉じるのは利用者の操作だけにする(結果を見る前に消えないように).
+        .sheet(isPresented: $isShowingRevivalWheel) {
+            ChipRevivalWheelView()
+        }
+        .onChange(of: environment.store.isRevivalDue) { _, isDue in
+            if isDue { isShowingRevivalWheel = true }
+        }
         // アプリを閉じた状態で通知をタップした場合, この画面(MainSplitView)が
         // まだ画面に無いうちに `pendingNotificationConversationID` が
         // セットされていることがある. `onChange` は「表示された後の変化」にしか
@@ -164,6 +173,7 @@ private struct MainSplitView: View {
         .task {
             try? await Task.sleep(for: .milliseconds(300))
             await openPendingNotificationConversationIfNeeded()
+            if environment.store.isRevivalDue { isShowingRevivalWheel = true }
         }
         .onChange(of: store.pendingNotificationConversationID) { _, _ in
             Task { await openPendingNotificationConversationIfNeeded() }
