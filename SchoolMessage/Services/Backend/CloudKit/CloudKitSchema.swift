@@ -36,6 +36,33 @@ enum CKSchema {
         }
     }
 
+    // MARK: - PlayerWallet
+
+    /// アプリ内ゲームのポイント「CHIP」の残高.
+    ///
+    /// プロフィールとは別のレコードにしている(`PlayerWallet` のコメント参照).
+    /// 書き込めるのは作成者本人だけ(Public Database の既定)なので,
+    /// 他人の残高を書き換えることはできない.
+    enum PlayerWallet {
+        static let recordType = "PlayerWallet"
+
+        /// 持ち主の userRecordName. `creatorUserRecordID` と突き合わせて偽物を弾く.
+        static let ownerID = "ownerID"
+        /// 残高. ランキングで並べ替えるため QUERYABLE / SORTABLE が要る.
+        static let balance = "balance"
+        /// CHIP が 0 になった日時(復活日の計算に使う).
+        static let bankruptAt = "bankruptAt"
+        /// 精算済みの対戦 ID(二重に増減させないための記録).
+        static let settledGameIDs = "settledGameIDs"
+        static let updatedAt = "updatedAt"
+
+        /// `UserProfile` と同じ理由で接頭辞を付ける
+        /// (userRecordID と同名だと `Users` システムレコードと衝突するため).
+        static func recordName(for userID: UserID) -> String {
+            "wallet-\(userID.rawValue)"
+        }
+    }
+
     // MARK: - Friendship
 
     enum Friendship {

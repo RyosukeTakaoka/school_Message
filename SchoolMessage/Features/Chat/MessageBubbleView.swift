@@ -316,7 +316,39 @@ struct MessageBubbleView: View {
         case .othello(let state): othelloStatusText(state)
         case .colorBattle(let state): colorBattleStatusText(state)
         case .daifugo(let state): daifugoStatusText(state)
+        case .indianPoker(let state): chipGameStatusText(
+            isFinished: state.isFinished,
+            playerCount: state.playerIDs.count,
+            bet: state.bet,
+            isLobby: state.lobby != nil
+        )
+        case .doubt(let state): chipGameStatusText(
+            isFinished: state.isFinished,
+            playerCount: state.playerIDs.count,
+            bet: state.bet,
+            isLobby: state.lobby != nil
+        )
+        case .blackjack(let state): chipGameStatusText(
+            isFinished: state.isFinished,
+            playerCount: state.playerIDs.count,
+            bet: state.bet,
+            isLobby: state.lobby != nil
+        )
+        case .chinchiro(let state): chipGameStatusText(
+            isFinished: state.isFinished,
+            playerCount: state.playerIDs.count,
+            bet: state.bet,
+            isLobby: state.lobby != nil
+        )
         }
+    }
+
+    /// CHIP を使う遊びの 1 行(募集中 / 対戦中 / 終了 と, 賭けている額).
+    private func chipGameStatusText(isFinished: Bool, playerCount: Int, bet: Int, isLobby: Bool) -> String {
+        let amount = ChipRules.formatted(bet)
+        if isFinished { return String(localized: "対戦終了 · \(amount)") }
+        if isLobby { return String(localized: "参加者募集中 · \(playerCount)人 · 1人 \(amount)") }
+        return String(localized: "対戦中 · \(playerCount)人 · 1人 \(amount)")
     }
 
     private func othelloStatusText(_ state: OthelloSnapshot) -> String {

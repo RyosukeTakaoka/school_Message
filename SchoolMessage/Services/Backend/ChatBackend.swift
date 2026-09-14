@@ -53,6 +53,21 @@ protocol ChatBackend: Sendable {
 
     func fetchProfiles(ids: [UserID]) async throws -> [UserProfile]
 
+    // MARK: CHIP(アプリ内ゲームのポイント)
+
+    /// 自分の残高. まだ無ければ初期値で作る. 復活日を過ぎていればここで戻す.
+    func fetchMyWallet() async throws -> PlayerWallet
+
+    /// 残高に差分を足す.
+    ///
+    /// 絶対値ではなく差分で渡すのは, 同時に別のゲームが精算しても片方の更新が
+    /// 消えないようにするため(実装側で競合時に取り直して当て直す).
+    /// `gameID` を渡すと, 同じ対戦で二重に増減しないよう記録される.
+    func applyChipDelta(_ delta: Int, gameID: String?) async throws -> PlayerWallet
+
+    /// CHIP ランキング(残高の多い順).
+    func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry]
+
     // MARK: 友達
 
     func fetchFriends() async throws -> [UserProfile]

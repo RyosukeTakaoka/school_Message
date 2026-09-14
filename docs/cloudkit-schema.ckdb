@@ -22,6 +22,23 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE PlayerWallet (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        balance         INT64 QUERYABLE SORTABLE,
+        bankruptAt      TIMESTAMP,
+        ownerID         STRING QUERYABLE,
+        settledGameIDs  LIST<STRING>,
+        updatedAt       TIMESTAMP,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE BoardThread (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,

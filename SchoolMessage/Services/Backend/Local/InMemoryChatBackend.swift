@@ -13,6 +13,7 @@ actor InMemoryChatBackend: ChatBackend {
 
     private var me: UserProfile
     private var profiles: [UserID: UserProfile] = [:]
+    private var walletsByUser: [UserID: PlayerWallet] = [:]
     private var friendIDs: Set<UserID> = []
     private var conversations: [ConversationID: Conversation] = [:]
     private var messages: [ConversationID: [Message]] = [:]
@@ -135,6 +136,33 @@ actor InMemoryChatBackend: ChatBackend {
 
     func fetchProfiles(ids: [UserID]) async throws -> [UserProfile] {
         ids.compactMap { profiles[$0] }
+    }
+
+    // MARK: - CHIP
+
+    func fetchMyWallet() async throws -> PlayerWallet {
+        if let refreshed = walletsByUser[me.id]?.refreshedIfNeeded() {
+            walletsByUser[me.id] = refreshed
+        }
+        let wallet = walletsByUser[me.id] ?? PlayerWallet(ownerID: me.id)
+        walletsByUser[me.id] = wallet
+        return wallet
+    }
+
+    func applyChipDelta(_ delta: Int, gameID: String?) async throws -> PlayerWallet {
+        let current = try await fetchMyWallet()
+        if let gameID, current.hasSettled(gameID: gameID) { return current }
+        let updated = current.applying(delta: delta, gameID: gameID)
+        walletsByUser[me.id] = updated
+        return updated
+    }
+
+    func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry] {
+        walletsByUser.values
+            .map { ChipRankingEntry(ownerID: $0.ownerID, balance: $0.balance, updatedAt: $0.updatedAt) }
+            .sorted { $0.balance > $1.balance }
+            .prefix(limit)
+            .map { $0 }
     }
 
     // MARK: - 友達
