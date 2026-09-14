@@ -178,10 +178,11 @@ recordName: クライアントが採番した UUID
 | `imageWidth` | Int(64) | — | |
 | `imageHeight` | Int(64) | — | |
 | `imageByteCount` | Int(64) | — | |
+| `imageKind` | String | — | `"image"` または `"gif"`。無い(古い)レコードは `"image"` 扱い |
 
 recordName: クライアントが採番した UUID
 
-> 写真の 4 フィールド（`imageAsset` 以下）は, 書き込みに写真を添付したときだけ
+> 写真・GIF の 5 フィールド（`imageAsset` 以下）は, 書き込みに添付したときだけ
 > 値が入る。文章だけの書き込みでは触れないので, 未設定のままで構わない。
 
 ---

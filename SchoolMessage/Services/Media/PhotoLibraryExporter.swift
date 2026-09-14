@@ -34,7 +34,8 @@ enum PhotoLibraryExporter {
         do {
             try await PHPhotoLibrary.shared().performChanges {
                 switch kind {
-                case .image:
+                case .image, .gif:
+                    // GIF もファイル URL から直接読み込ませれば, アニメーションを保ったまま保存できる.
                     PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: url)
                 case .video:
                     PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)

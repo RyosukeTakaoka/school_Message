@@ -98,11 +98,15 @@ struct MediaViewerScreen: View {
         }
         .disabled(saveState == .saving)
         .padding()
-        .accessibilityLabel(
-            attachment.kind == .image
-                ? String(localized: "写真を保存")
-                : String(localized: "動画を保存")
-        )
+        .accessibilityLabel(Self.saveLabel(for: attachment.kind))
+    }
+
+    private static func saveLabel(for kind: MediaKind) -> String {
+        switch kind {
+        case .image: String(localized: "写真を保存")
+        case .gif: String(localized: "GIFを保存")
+        case .video: String(localized: "動画を保存")
+        }
     }
 
     /// 表示中の本体を「写真」アプリへ保存する.
@@ -128,6 +132,8 @@ struct MediaViewerScreen: View {
             switch attachment.kind {
             case .image:
                 ZoomableImageView(url: url)
+            case .gif:
+                ZoomableImageView(url: url, kind: .gif)
             case .video:
                 FullScreenVideoPlayer(url: url)
             }
@@ -214,6 +220,8 @@ struct FullScreenVideoPlayer: View {
 struct ZoomableImageView: UIViewRepresentable {
 
     let url: URL
+    /// GIF ならアニメーションしたまま(ImageIO で全コマをデコードして)表示する.
+    var kind: MediaKind = .image
 
     private static let maximumZoomScale: CGFloat = 4
     private static let doubleTapZoomScale: CGFloat = 2.5
@@ -261,7 +269,12 @@ struct ZoomableImageView: UIViewRepresentable {
         // 大きな画像でメモリを使い切らないよう, 表示直前に読み込む.
         if context.coordinator.loadedURL != url {
             context.coordinator.loadedURL = url
-            context.coordinator.imageView?.image = UIImage(contentsOfFile: url.path)
+            if kind == .gif, let data = try? Data(contentsOf: url) {
+                context.coordinator.imageView?.image = AnimatedGIFView.decode(data)
+                context.coordinator.imageView?.startAnimating()
+            } else {
+                context.coordinator.imageView?.image = UIImage(contentsOfFile: url.path)
+            }
             uiView.setZoomScale(1, animated: false)
         }
     }

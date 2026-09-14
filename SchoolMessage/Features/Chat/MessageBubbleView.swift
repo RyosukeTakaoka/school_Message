@@ -53,6 +53,8 @@ struct MessageBubbleView: View {
                 bubble
                     .contextMenu { replyMenu }
 
+                linkPreviewIfAny
+
                 reactionsRow
 
                 footer
@@ -112,6 +114,16 @@ struct MessageBubbleView: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint(String(localized: "返信元のメッセージへ移動します"))
+        }
+    }
+
+    /// 本文に URL が含まれていれば, 吹き出しの下にカードで要約を出す
+    /// (`LinkPreviewCard` 参照. oEmbed / Open Graph).
+    @ViewBuilder
+    private var linkPreviewIfAny: some View {
+        if !message.isUnsent, case .text(let body) = message.content, let url = LinkDetector.firstURL(in: body) {
+            LinkPreviewCard(url: url)
+                .frame(maxWidth: 320, alignment: isOutgoing ? .trailing : .leading)
         }
     }
 
@@ -256,6 +268,9 @@ struct MessageBubbleView: View {
         case .image(let attachment):
             mediaBubble(attachment, showsPlayBadge: false)
 
+        case .gif(let attachment):
+            mediaBubble(attachment, showsPlayBadge: false)
+
         case .video(let attachment):
             mediaBubble(attachment, showsPlayBadge: true)
 
@@ -351,7 +366,12 @@ struct MessageBubbleView: View {
             onTapMedia(attachment)
         } label: {
             ZStack(alignment: .bottomTrailing) {
-                thumbnail(attachment)
+                if attachment.kind == .gif {
+                    // GIF は動画と違い, タップしなくても自動で再生して見せる.
+                    GifBubbleContent(attachment: attachment, conversationID: conversation.id)
+                } else {
+                    thumbnail(attachment)
+                }
                 if showsPlayBadge {
                     playOverlay(attachment)
                 }
@@ -498,5 +518,48 @@ struct MessageBubbleView: View {
             if let readLabel { parts.append(readLabel) }
         }
         return parts.joined(separator: "、")
+    }
+}
+
+/// メッセージの GIF 添付.
+///
+/// 動画と違い, GIF はタップを待たずに自動でアニメーションさせる(そもそも
+/// タップして「再生」する体験ではないため). 本体の読み込みが終わるまでは
+/// メッセージと一緒に届いた静止画のサムネイルを出しておく.
+private struct GifBubbleContent: View {
+
+    @Environment(AppEnvironment.self) private var environment
+
+    let attachment: MediaAttachment
+    let conversationID: ConversationID
+
+    private var loader: MediaLoader { environment.mediaLoader }
+
+    var body: some View {
+        Group {
+            if case .ready(let url) = loader.state(for: attachment), let data = try? Data(contentsOf: url) {
+                AnimatedGIFView(data: data)
+            } else {
+                staticThumbnail
+            }
+        }
+        .task { loader.load(attachment, in: conversationID) }
+    }
+
+    @ViewBuilder
+    private var staticThumbnail: some View {
+        if let data = attachment.thumbnailData, let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Rectangle()
+                .fill(Palette.incomingBubble)
+                .overlay {
+                    Image(systemName: "photo")
+                        .font(.largeTitle)
+                        .foregroundStyle(Palette.subdued)
+                }
+        }
     }
 }

@@ -60,6 +60,45 @@ actor MediaProcessor {
         )
     }
 
+    // MARK: - GIF
+
+    /// Giphy などから選んだ GIF をそのまま送信用にする.
+    ///
+    /// `prepareImage` と違って JPEG に再エンコードしない
+    /// (アニメーションが消えてしまうため). 代わりに, 元のバイト数に上限を設けて
+    /// 大きすぎる GIF を弾く. サムネイル(1 コマ目の静止画)だけは
+    /// `prepareImage` と同じ ImageIO の仕組みで作れる(GIF もデコードできるため).
+    func prepareGif(
+        originalData: Data,
+        attachmentID: AttachmentID = .generate()
+    ) throws -> OutgoingMessage.LocalMedia {
+        guard originalData.count <= MediaLimits.gifMaxByteCount else {
+            throw AppError.mediaTooLarge(limitMB: MediaLimits.megabytes(MediaLimits.gifMaxByteCount))
+        }
+        guard let downsampled = Self.downsample(
+            data: originalData,
+            maxPixelEdge: MediaLimits.imageMaxPixelEdge
+        ) else {
+            throw AppError.unsupportedMedia
+        }
+
+        let destination = store.outboxURL(attachmentID: attachmentID, kind: .gif)
+        try originalData.write(to: destination, options: .atomic)
+
+        let thumbnail = Self.makeThumbnailData(from: downsampled) ?? Data()
+
+        return OutgoingMessage.LocalMedia(
+            attachmentID: attachmentID,
+            kind: .gif,
+            fileURL: destination,
+            thumbnailData: thumbnail,
+            pixelWidth: Int(downsampled.size.width * downsampled.scale),
+            pixelHeight: Int(downsampled.size.height * downsampled.scale),
+            duration: nil,
+            byteCount: originalData.count
+        )
+    }
+
     /// プロフィール画像 / グループ画像用の小さな JPEG を作る.
     func prepareAvatarData(originalData: Data) throws -> Data {
         guard let image = Self.downsample(
