@@ -121,7 +121,6 @@ struct OutgoingMessage: Identifiable, Hashable, Sendable, Codable {
             )
             switch media.kind {
             case .image: content = .image(attachment)
-            case .gif: content = .gif(attachment)
             case .video: content = .video(attachment)
             }
         }

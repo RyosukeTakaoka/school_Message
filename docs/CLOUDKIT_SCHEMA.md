@@ -210,11 +210,11 @@ recordName: クライアントが採番した UUID
 | `imageWidth` | Int(64) | — | |
 | `imageHeight` | Int(64) | — | |
 | `imageByteCount` | Int(64) | — | |
-| `imageKind` | String | — | `"image"` または `"gif"`。無い(古い)レコードは `"image"` 扱い |
+| `imageKind` | String | — | 現在は使っていない（GIF機能を廃止したため, 常に `"image"` 扱い）。フィールド自体は残しているが, アプリからは書き込まない |
 
 recordName: クライアントが採番した UUID
 
-> 写真・GIF の 5 フィールド（`imageAsset` 以下）は, 書き込みに添付したときだけ
+> 写真の 5 フィールド（`imageAsset` 以下）は, 書き込みに添付したときだけ
 > 値が入る。文章だけの書き込みでは触れないので, 未設定のままで構わない。
 
 ---

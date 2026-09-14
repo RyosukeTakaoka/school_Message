@@ -666,7 +666,6 @@ extension CloudKitBackend {
             )
             switch media.kind {
             case .image: content = .image(attachment)
-            case .gif: content = .gif(attachment)
             case .video: content = .video(attachment)
             }
         } else {
@@ -697,7 +696,6 @@ extension CloudKitBackend {
         if let media = payload.media {
             switch media.kind {
             case .image: return String(localized: "写真")
-            case .gif: return String(localized: "GIF")
             case .video: return String(localized: "動画")
             }
         }

@@ -88,13 +88,6 @@
 		<true/>
 	</dict>
 
-	<!-- Giphy の GIF 検索 API キー. docs/SETUP.md の案内に従って取得し,
-	     ここに直接書くか, Xcode の Build Settings でユーザ定義変数
-	     ($(GIPHY_API_KEY) など)経由で埋め込むこと。空のままでも
-	     ビルドできるが, GIF検索は使えない(利用時にエラーで案内する)。 -->
-	<key>GiphyAPIKey</key>
-	<string></string>
-
 	<!-- 輸出コンプライアンス(ITSAppUsesNonExemptEncryption)は意図的に未設定.
 	     本アプリはメッセージのエンドツーエンド暗号化を行うため, 単純に
 	     false を宣言することはできない. App Store Connect 側で
