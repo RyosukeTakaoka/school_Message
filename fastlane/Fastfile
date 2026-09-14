@@ -19,7 +19,13 @@ platform :ios do
     # アプリのビルド
     build_app(
       scheme: "school_Message",
-      export_method: "app-store"
+      export_method: "app-store",
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: {
+          "app.takaoka.com.schoolmessage" => "SchoolMessage" # プロファイル名またはBundle IDマッピング
+        }
+      }
     )
 
     # TestFlightへアップロード
