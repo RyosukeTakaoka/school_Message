@@ -349,6 +349,11 @@ struct MessageComposerView: View {
         mentions = []
         mentionQuery = nil
 
+        // 画面のどこかをタップするとキーボードが閉じる仕組み(`KeyboardDismiss`)が
+        // 送信ボタンのタップにも反応するので, 送ったあとに入力欄へ戻しておく.
+        // そうしないと, 1 通送るたびにキーボードが閉じて打ち続けられない.
+        Task { @MainActor in isInputFocused = true }
+
         Task {
             if let attachment {
                 switch attachment {

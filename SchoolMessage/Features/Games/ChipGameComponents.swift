@@ -212,14 +212,15 @@ struct ChipGameLobbySection: View {
                     Button(String(localized: "開始する"), action: onStart)
                         .buttonStyle(.borderedProminent)
                         .disabled(isSending || lobby.joinedPlayerIDs.count < kind.minimumPlayers)
+                }
 
-                    // 始まる前なら, 募集した人はいつでも取りやめられる.
-                    // 始まったあとは取り消せない(賭けを無かったことにできないように).
-                    if let onCancel {
-                        Button(String(localized: "募集を取り消す"), role: .destructive, action: onCancel)
-                            .buttonStyle(.bordered)
-                            .disabled(isSending)
-                    }
+                // 始まる前なら取りやめられる(始まったあとは賭けを無かったことに
+                // できないよう取り消せない). 1 対 1 では相手が作った募集も
+                // 取りやめられるので, 出すかどうかは呼び出し側が決める.
+                if let onCancel {
+                    Button(String(localized: "募集を取り消す"), role: .destructive, action: onCancel)
+                        .buttonStyle(.bordered)
+                        .disabled(isSending)
                 }
             }
         }

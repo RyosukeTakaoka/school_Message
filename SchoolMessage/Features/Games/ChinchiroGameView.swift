@@ -36,7 +36,9 @@ struct ChinchiroGameView: View {
                             isSending: isSending,
                             onJoin: { run { await store.joinChinchiro(in: conversationID) } },
                             onLeave: { run { await store.leaveGameLobby(kind: .chinchiro, in: conversationID) } },
-                            onCancel: { run { await store.cancelGame(kind: .chinchiro, in: conversationID) } },
+                            onCancel: store.canCancelGame(kind: .chinchiro, in: conversationID)
+                                ? { run { await store.cancelGame(kind: .chinchiro, in: conversationID) } }
+                                : nil,
                             onStart: { run { await store.startChinchiro(in: conversationID) } }
                         )
                     case .rolling:

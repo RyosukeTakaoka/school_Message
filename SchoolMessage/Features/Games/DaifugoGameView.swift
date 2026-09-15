@@ -176,7 +176,9 @@ struct DaifugoGameView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSending || lobby.joinedPlayerIDs.count < DaifugoSnapshot.Lobby.minimumPlayers)
+                }
 
+                if store.canCancelGame(kind: .daifugo, in: conversationID) {
                     Button(String(localized: "募集を取り消す"), role: .destructive) {
                         Task {
                             isSending = true

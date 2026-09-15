@@ -40,15 +40,17 @@ struct BoardThreadView: View {
                         postRow(post)
                             .id(post.id)
                     }
+
+                    // 一番下でさらに引き上げると更新する. 新しい書き込みは下に
+                    // 増えていくので, 上まで戻って引き下げるより手が届きやすい.
+                    PullUpToRefresh { Task { await load() } }
+                        .frame(height: 1)
                 }
                 .padding(AppConstants.Layout.standardSpacing)
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
             .background(Palette.chatBackground)
-            // 下に引っ張って更新する. ポーリングも動いているが, 自分で
-            // 引いて更新できたほうが「いま最新か」が分かりやすい.
-            .refreshable { await load() }
             // 下へスワイプしてもキーボードを閉じられるようにする
             // (タップで閉じるほうは `RootView` でアプリ全体に仕込んである).
             .scrollDismissesKeyboard(.interactively)

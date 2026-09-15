@@ -272,8 +272,30 @@ struct MessageBubbleView: View {
             mediaBubble(attachment, showsPlayBadge: true)
 
         case .game(let snapshot):
-            gameBubble(snapshot)
+            if snapshot.isCancelled {
+                cancelledGameBubble(snapshot)
+            } else {
+                gameBubble(snapshot)
+            }
         }
+    }
+
+    /// 取り消した対戦.
+    ///
+    /// 送信取り消しと同じ見た目にして, タップしても何も起きないようにする.
+    /// カードのままだと押せてしまい, 「取り消したのに前の対戦に入る」ように
+    /// 見えるため(実際には新しく始められる状態になっている).
+    private func cancelledGameBubble(_ snapshot: GameSnapshot) -> some View {
+        Text("\(snapshot.kind.title)の対戦を取り消しました")
+            .font(.footnote)
+            .italic()
+            .foregroundStyle(Palette.subdued)
+            .padding(.horizontal, AppConstants.Layout.bubbleHorizontalPadding)
+            .padding(.vertical, AppConstants.Layout.bubbleVerticalPadding)
+            .overlay {
+                RoundedRectangle(cornerRadius: AppConstants.Layout.bubbleCornerRadius, style: .continuous)
+                    .strokeBorder(Palette.subdued.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
     }
 
     /// 自分がこのメッセージでメンションされているか.
