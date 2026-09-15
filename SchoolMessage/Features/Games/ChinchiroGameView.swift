@@ -66,7 +66,7 @@ struct ChinchiroGameView: View {
     private static let rules = String(localized: """
         3個のサイコロを1回だけ振ります。STOPを押すと3個とも同時に止まります。
 
-        ピンゾロ(1-1-1)は5倍、ほかのゾロ目は3倍、シゴロ(4-5-6)は2倍、2個そろえば残りの数字が「目」になって1倍もらえます。ヒフミ(1-2-3)は2倍の支払い、それ以外の組み合わせは増減なしです。
+        役の強さは、ピンゾロ(1-1-1)が一番強く、次にゾロ目、シゴロ(4-5-6)、目(2個そろって残りが目になる)、目無し、ヒフミ(1-2-3)が一番弱い順です。全員が振り終えると、一番強い役を出した人が全員の賭けを総取りします。同じ強さで並んだら山分けです。
         """)
 
     // MARK: - 対戦中
@@ -113,6 +113,10 @@ struct ChinchiroGameView: View {
                         .foregroundStyle(Palette.subdued)
                 }
 
+                if snapshot.isFinished {
+                    resultLine(snapshot)
+                }
+
                 Divider()
                 resultsSection(snapshot)
 
@@ -133,6 +137,23 @@ struct ChinchiroGameView: View {
             // まだ振っていないなら回し始める.
             if myRoll == nil, !isSpinning { startSpinning() }
         }
+    }
+
+    /// 決着したときに, 誰が総取りしたのかを 1 行で出す.
+    private func resultLine(_ snapshot: ChinchiroSnapshot) -> some View {
+        let winners = snapshot.winnerIDs
+        let text: String
+        if winners.count == snapshot.playerIDs.count {
+            text = String(localized: "全員同着。増減なしです")
+        } else if winners.count == 1 {
+            text = String(localized: "\(store.displayName(for: winners[0])) の総取りです")
+        } else {
+            let names = winners.map { store.displayName(for: $0) }.joined(separator: "、")
+            text = String(localized: "\(names) が同着で山分けです")
+        }
+        return Text(text)
+            .font(.headline)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func diceRow(_ dice: [Int]) -> some View {
@@ -169,9 +190,11 @@ struct ChinchiroGameView: View {
                             .foregroundStyle(Palette.subdued)
                         Text(roll.hand.title)
                             .font(.caption.weight(.semibold))
-                        Text(ChipRules.formattedDelta(snapshot.bet * roll.hand.multiplier))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(roll.hand.multiplier > 0 ? .green : (roll.hand.multiplier < 0 ? Palette.failure : Palette.subdued))
+                        if snapshot.isFinished, let delta = snapshot.chipDeltas[playerID] {
+                            Text(ChipRules.formattedDelta(delta))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(delta > 0 ? .green : (delta < 0 ? Palette.failure : Palette.subdued))
+                        }
                     } else {
                         Text("まだ振っていません")
                             .font(.caption)

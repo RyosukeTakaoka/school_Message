@@ -2,9 +2,14 @@ import Foundation
 
 /// チンチロの役.
 ///
-/// 一般的なチンチロと違い, このアプリでは**振り直しをしない**(1 回だけ振る).
-/// 親も置かず, 各自が自分の役の倍率でそのまま精算する. 覚えることを減らして,
-/// 休み時間に 1 分で遊べることを優先した.
+/// 一般的なチンチロと違い, このアプリでは**振り直しをしない**(1 回だけ振る)し,
+/// **親も置かない**. 覚えることを減らして, 休み時間に 1 分で遊べることを優先した.
+///
+/// 役の強さの比較(`strength`)だけを使い, 一番強い役を出した人が全員の賭けを
+/// 総取りする(`ChinchiroSnapshot.chipDeltas` 参照). 以前は各自が自分の役の
+/// 倍率でその場で精算していたが, その形だと全員が弱い役(ヒフミなど)を出すと
+/// **全員が損をする**(CHIP がどこにも移動せず消える)ことがあり, 賭け事として
+/// 不自然だったため, 総取り方式に変えた.
 enum ChinchiroHand: Hashable, Sendable, Codable {
     /// 1-1-1.
     case pinzoro
@@ -45,19 +50,7 @@ enum ChinchiroHand: Hashable, Sendable, Codable {
         }
     }
 
-    /// 賭けた額に掛ける倍率. マイナスは支払い.
-    var multiplier: Int {
-        switch self {
-        case .pinzoro: 5
-        case .triple: 3
-        case .shigoro: 2
-        case .number: 1
-        case .hifumi: -2
-        case .noHand: 0
-        }
-    }
-
-    /// 強い順の並び(結果一覧の並べ替えに使う). 大きいほど強い.
+    /// 強い順の並び(結果一覧の並べ替えと, 総取りする人の判定に使う). 大きいほど強い.
     var strength: Int {
         switch self {
         case .pinzoro: 100
@@ -86,7 +79,7 @@ struct ChinchiroRoll: Hashable, Sendable, Codable {
 
 /// チンチロの状態.
 ///
-/// 参加者それぞれが 1 回ずつ振り, 自分の役の倍率で精算する(親なし).
+/// 参加者それぞれが 1 回ずつ振り, 一番強い役を出した人が総取りする(親なし).
 /// 順番は決めず, 振っていない人は好きなときに振れる.
 struct ChinchiroSnapshot: Hashable, Sendable, Codable {
 
@@ -164,13 +157,40 @@ struct ChinchiroSnapshot: Hashable, Sendable, Codable {
         return next
     }
 
-    /// 精算. 各自の役の倍率をそのまま賭け額に掛ける(親なし).
+    /// 一番強い役を出した人(同着なら複数). 全員が振り終わっていなければ空.
+    var winnerIDs: [UserID] {
+        guard let round, isFinished else { return [] }
+        guard let best = round.playerIDs.compactMap({ round.rolls[$0]?.hand.strength }).max() else { return [] }
+        return round.playerIDs.filter { round.rolls[$0]?.hand.strength == best }
+    }
+
+    /// 精算. 一番強い役を出した人が, 全員の賭けを総取りする(親なし).
+    ///
+    /// ブラックジャックの対人戦と同じ考え方. 全員が同じ額を賭けるので,
+    /// 「負けた人数 × 賭け額」がそのまま勝った人の取り分になる. 同着で
+    /// 勝った人が複数いれば山分けし, 割り切れない端数は並び順の先頭から
+    /// 1 ずつ足して総量を合わせる(CHIP の総量が変わらないように).
     var chipDeltas: [UserID: Int] {
         guard let round, isFinished else { return [:] }
+        let winners = winnerIDs
+        guard !winners.isEmpty else { return [:] }
+
         var deltas: [UserID: Int] = [:]
-        for playerID in round.playerIDs {
-            guard let roll = round.rolls[playerID] else { continue }
-            deltas[playerID] = round.bet * roll.hand.multiplier
+        let losers = round.playerIDs.filter { !winners.contains($0) }
+        for loser in losers {
+            deltas[loser] = -round.bet
+        }
+
+        // 全員が同着(全員が同じ強さ)なら, 出し合った分がそのまま戻るだけ.
+        guard !losers.isEmpty else {
+            return Dictionary(uniqueKeysWithValues: round.playerIDs.map { ($0, 0) })
+        }
+
+        let pot = round.bet * losers.count
+        let share = pot / winners.count
+        let remainder = pot % winners.count
+        for (index, winner) in winners.enumerated() {
+            deltas[winner] = share + (index < remainder ? 1 : 0)
         }
         return deltas
     }
