@@ -21,6 +21,11 @@ struct ChipRankingView: View {
             List {
                 Section {
                     myStandingRow
+                    if !store.hasPlayedChipGame {
+                        Text("1回でも対戦を終えると、ランキングに出ます")
+                            .font(.footnote)
+                            .foregroundStyle(Palette.subdued)
+                    }
                     if store.isRevivalDue {
                         Button(String(localized: "復活ルーレットを回す")) {
                             isShowingRevivalWheel = true
@@ -49,7 +54,7 @@ struct ChipRankingView: View {
                 } header: {
                     Text("ランキング")
                 } footer: {
-                    Text("CHIPはアプリの中のゲームでしか使えないポイントです。買うことも、誰かに渡すことも、お金やギフト券などと交換することもできません。")
+                    Text("ランキングには、対戦を1回でも終えた人だけが並びます。CHIPはアプリの中のゲームでしか使えないポイントです。買うことも、誰かに渡すことも、お金やギフト券などと交換することもできません。")
                 }
             }
             .navigationTitle("CHIPランキング")
