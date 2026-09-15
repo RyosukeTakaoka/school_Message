@@ -173,11 +173,9 @@ struct IndianPokerGameView: View {
             if let delta = settledDelta ?? me.flatMap({ snapshot.chipDeltas[$0] }) {
                 ChipResultBanner(delta: delta)
             }
-            Button(String(localized: "もう一回")) {
-                run { await store.createIndianPokerLobby(bet: snapshot.bet, in: conversationID) }
+            ChipGameRematchSection(kind: .indianPoker, previousBet: snapshot.bet, isSending: isSending) { bet in
+                run { await store.createIndianPokerLobby(bet: bet, in: conversationID) }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSending || !store.canPlayChipGames)
         }
     }
 

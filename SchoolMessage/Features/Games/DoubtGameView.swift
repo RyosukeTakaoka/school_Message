@@ -177,11 +177,9 @@ struct DoubtGameView: View {
             if let delta = settledDelta ?? me.flatMap({ snapshot.chipDeltas[$0] }) {
                 ChipResultBanner(delta: delta)
             }
-            Button(String(localized: "もう一回")) {
-                run { await store.createDoubtLobby(bet: round.bet, in: conversationID) }
+            ChipGameRematchSection(kind: .doubt, previousBet: round.bet, isSending: isSending) { bet in
+                run { await store.createDoubtLobby(bet: bet, in: conversationID) }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSending || !store.canPlayChipGames)
         }
         .frame(maxWidth: .infinity)
     }
