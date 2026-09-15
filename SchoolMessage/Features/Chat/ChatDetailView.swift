@@ -95,6 +95,9 @@ struct ChatDetailView: View {
             }
             .background(Palette.chatBackground)
             .defaultScrollAnchor(.bottom)
+            // 会話の何も無いところをタップ, または下へスワイプでキーボードを閉じる.
+            .dismissesKeyboardOnTap()
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.last?.id) { _, _ in
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(Self.bottomAnchor, anchor: .bottom)

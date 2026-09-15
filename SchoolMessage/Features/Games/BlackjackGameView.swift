@@ -2,8 +2,8 @@ import SwiftUI
 
 /// ブラックジャックの対戦画面.
 ///
-/// 参加者はそれぞれディーラーと勝負する. プレイヤー同士は影響し合わないので
-/// 順番は決めず, 好きなときに HIT / STAND できる.
+/// 参加者どうしの勝負. 順番は決めず, 好きなときに HIT / STAND できる
+/// (ほかの人の手札と点数は見えるので, それを見ながら決められる).
 struct BlackjackGameView: View {
 
     @Environment(AppEnvironment.self) private var environment
@@ -17,7 +17,7 @@ struct BlackjackGameView: View {
     private var me: UserID? { store.currentUserID }
 
     private var snapshot: BlackjackSnapshot? {
-        store.currentGame(kind: .blackjack, in: conversationID)?.blackjack
+        store.activeGame(kind: .blackjack, in: conversationID)?.blackjack
     }
 
     var body: some View {
@@ -32,7 +32,8 @@ struct BlackjackGameView: View {
                             hostID: snapshot.hostID,
                             isSending: isSending,
                             onJoin: { run { await store.joinBlackjack(in: conversationID) } },
-                            onLeave: nil,
+                            onLeave: { run { await store.leaveGameLobby(kind: .blackjack, in: conversationID) } },
+                            onCancel: { run { await store.cancelGame(kind: .blackjack, in: conversationID) } },
                             onStart: { run { await store.startBlackjack(in: conversationID) } }
                         )
                     case .playing(let round):
@@ -46,22 +47,16 @@ struct BlackjackGameView: View {
             }
         }
         .task(id: snapshot) {
-            guard let snapshot else { return }
-            // 全員が引き終わったら, 気付いた端末がディーラーを進める.
-            if snapshot.isAwaitingDealer {
-                await store.resolveBlackjackDealerIfNeeded(in: conversationID)
-            }
-            if snapshot.isFinished, let me {
-                settledDelta = await store.settleChipsIfNeeded(for: .blackjack(snapshot))
-                    ?? snapshot.chipDeltas[me]
-            }
+            guard let snapshot, snapshot.isFinished, let me else { return }
+            settledDelta = await store.settleChipsIfNeeded(for: .blackjack(snapshot))
+                ?? snapshot.chipDeltas[me]
         }
     }
 
     private static let rules = String(localized: """
-        21に近いほうが勝ちです。21を超えたら負け(バースト)。絵札は10、Aは11か1の都合のよいほうで数えます。
+        参加者どうしで勝負します。21に近いほうが勝ちで、21を超えたら負け(バースト)です。絵札は10、Aは11か1の都合のよいほうで数えます。
 
-        操作は HIT(もう1枚引く)と STAND(そこで止める)だけ。全員が止めたあと、ディーラーが17以上になるまで引きます。ディーラーがバーストしたら残っている人の勝ちです。
+        操作は HIT(もう1枚引く)と STAND(そこで止める)だけ。全員が止めるかバーストしたら決着で、21を超えなかった人のうち一番大きい人が、みんなの賭けたCHIPを総取りします。同じ点数で並んだら山分け、全員バーストなら増減なしです。
         """)
 
     // MARK: - 対戦中
@@ -78,9 +73,9 @@ struct BlackjackGameView: View {
                     ChipBalanceBadge(compact: true)
                 }
 
-                dealerSection(snapshot, round: round)
-
-                Divider()
+                if snapshot.isFinished {
+                    resultLine(snapshot)
+                }
 
                 if let me, let myState = round.hands[me] {
                     mySection(snapshot, round: round, state: myState)
@@ -93,21 +88,21 @@ struct BlackjackGameView: View {
         }
     }
 
-    private func dealerSection(_ snapshot: BlackjackSnapshot, round: BlackjackSnapshot.Round) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("ディーラー")
-                    .font(.caption)
-                    .foregroundStyle(Palette.subdued)
-                Spacer()
-                Text(round.isDealerDone
-                     ? String(localized: "\(round.dealerValue)\(round.isDealerBust ? " (バースト)" : "")")
-                     : String(localized: "引くのは全員が止めてから"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(round.isDealerBust ? Palette.failure : Palette.subdued)
-            }
-            cardRow(round.dealerCards)
+    /// 決着したときに, 誰が勝ったのかを 1 行で出す.
+    private func resultLine(_ snapshot: BlackjackSnapshot) -> some View {
+        let winners = snapshot.winnerIDs
+        let text: String
+        if winners.isEmpty {
+            text = String(localized: "全員バースト。引き分けです")
+        } else if winners.count == 1 {
+            text = String(localized: "\(store.displayName(for: winners[0])) の勝ちです")
+        } else {
+            let names = winners.map { store.displayName(for: $0) }.joined(separator: "、")
+            text = String(localized: "\(names) が同点で山分けです")
         }
+        return Text(text)
+            .font(.headline)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func mySection(
@@ -170,28 +165,37 @@ struct BlackjackGameView: View {
         }
     }
 
+    /// ほかの参加者の手札. 相手の点数を見ながら引くか決められるように,
+    /// 札も点数もそのまま出す(伏せる札は無い).
     private func othersSection(_ snapshot: BlackjackSnapshot, round: BlackjackSnapshot.Round) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppConstants.Layout.standardSpacing) {
             Text("ほかの参加者")
                 .font(.caption)
                 .foregroundStyle(Palette.subdued)
             ForEach(round.playerIDs.filter { $0 != me }, id: \.self) { playerID in
-                HStack(spacing: 8) {
-                    Text(store.displayName(for: playerID))
-                        .font(.subheadline)
-                    Spacer()
-                    if let state = round.hands[playerID] {
-                        Text("\(state.bestValue)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(state.isBust ? Palette.failure : Palette.subdued)
-                        if snapshot.isFinished, let outcome = snapshot.outcome(for: playerID) {
-                            Text(outcome.title)
-                                .font(.caption.weight(.semibold))
-                        } else {
-                            Text(state.isDone ? String(localized: "止めた") : String(localized: "考え中"))
-                                .font(.caption)
-                                .foregroundStyle(Palette.subdued)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(store.displayName(for: playerID))
+                            .font(.subheadline)
+                        Spacer()
+                        if let state = round.hands[playerID] {
+                            Text("\(state.bestValue)")
+                                .font(.subheadline.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(state.isBust ? Palette.failure : Color.primary)
+                            if snapshot.isFinished, let outcome = snapshot.outcome(for: playerID) {
+                                Text(outcome.title)
+                                    .font(.caption.weight(.semibold))
+                            } else {
+                                Text(state.isBust
+                                     ? String(localized: "バースト")
+                                     : (state.isStanding ? String(localized: "止めた") : String(localized: "考え中")))
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.subdued)
+                            }
                         }
+                    }
+                    if let state = round.hands[playerID] {
+                        cardRow(state.cards)
                     }
                 }
             }

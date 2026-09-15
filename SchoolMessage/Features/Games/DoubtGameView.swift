@@ -20,7 +20,7 @@ struct DoubtGameView: View {
     private var me: UserID? { store.currentUserID }
 
     private var snapshot: DoubtSnapshot? {
-        store.currentGame(kind: .doubt, in: conversationID)?.doubt
+        store.activeGame(kind: .doubt, in: conversationID)?.doubt
     }
 
     var body: some View {
@@ -35,7 +35,8 @@ struct DoubtGameView: View {
                             hostID: snapshot.hostID,
                             isSending: isSending,
                             onJoin: { run { await store.joinDoubt(in: conversationID) } },
-                            onLeave: nil,
+                            onLeave: { run { await store.leaveGameLobby(kind: .doubt, in: conversationID) } },
+                            onCancel: { run { await store.cancelGame(kind: .doubt, in: conversationID) } },
                             onStart: { run { await store.startDoubt(in: conversationID) } }
                         )
                     case .round(let round):

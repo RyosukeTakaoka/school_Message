@@ -1,14 +1,20 @@
 import Foundation
 
-/// ブラックジャックの状態.
+/// ブラックジャックの状態(2 人以上).
+///
+/// ## ディーラーを置かない理由
+/// 人間のディーラーがいないので, ディーラーを置くと誰かの端末がその役を代行する
+/// ことになる. そうすると
+/// - 勝ち負けが「人と人」ではなくなり, 対戦している感じがしない
+/// - 全員がディーラーに勝つと, どこからともなく CHIP が増えてしまう
+/// という 2 つの問題が出る. そこで**参加者どうしの勝負**にして,
+/// 21 を超えなかった人のうち一番大きい人が, 全員の賭けを総取りする形にした.
+/// 負けた人が出した分をそのまま勝った人が受け取るので, CHIP の総量は変わらない.
 ///
 /// ## 作りをどこまで簡単にしたか
 /// - 操作は HIT と STAND だけ(ダブルダウン・スプリット・保険は入れない).
-/// - ディーラーは自動. 伏せカードは持たせず, **全員が引き終わってから**
-///   17 以上になるまで引く. 伏せカードを持たせると「誰がその 1 枚を知るのか」を
-///   決めなければならず, 人間のディーラーがいないこの作りでは筋が通らないため.
 /// - 順番は決めない. 各自が好きなときに HIT / STAND できる
-///   (プレイヤー同士は影響し合わないので, 待ち時間を作る意味がない).
+///   (ほかの人の点数は見えるので, それを見ながら決められる).
 ///
 /// 引く札はその都度, 引いた本人の端末の乱数で決めて記録する. 対戦 ID から
 /// 導ける並びにすると, 引く前に次の札が分かってしまい HIT の判断が意味を失うため.
@@ -16,8 +22,6 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
 
     static let minimumPlayers = 2
     static let maxBet = 100
-    /// ディーラーはこの数以上になるまで引く.
-    static let dealerStandsAt = 17
     static let blackjack = 21
 
     struct PlayerState: Hashable, Sendable, Codable {
@@ -34,13 +38,6 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
         var playerIDs: [UserID]
         var bet: Int
         var hands: [UserID: PlayerState]
-        /// ディーラーの札. 最初は 1 枚だけ見えている.
-        var dealerCards: [PlayingCard]
-        /// ディーラーが引き終わったか.
-        var isDealerDone: Bool
-
-        var dealerValue: Int { BlackjackSnapshot.bestValue(of: dealerCards) }
-        var isDealerBust: Bool { dealerValue > BlackjackSnapshot.blackjack }
     }
 
     enum Phase: Hashable, Sendable, Codable {
@@ -51,6 +48,10 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
     var gameID: String
     var hostID: UserID
     var phase: Phase
+
+    /// 募集を取り消したか. Optional なのは, この項目が無い頃に送られた
+    /// メッセージも読めるようにするため(`nil` は「取り消されていない」).
+    var isCancelled: Bool? = nil
 
     static func newLobby(hostID: UserID, bet: Int) -> BlackjackSnapshot {
         BlackjackSnapshot(
@@ -86,13 +87,9 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
         }
     }
 
+    /// 全員が止めるかバーストしたら決着.
     var isFinished: Bool {
-        round?.isDealerDone ?? false
-    }
-
-    /// 全員が引き終わり, あとはディーラーが引くだけの状態か.
-    var isAwaitingDealer: Bool {
-        guard let round, !round.isDealerDone else { return false }
+        guard let round else { return false }
         return round.playerIDs.allSatisfy { round.hands[$0]?.isDone ?? false }
     }
 
@@ -101,9 +98,39 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
     }
 
     func canAct(_ userID: UserID) -> Bool {
-        guard let round, !round.isDealerDone else { return false }
+        guard let round, !isFinished else { return false }
         guard let state = round.hands[userID] else { return false }
         return !state.isDone
+    }
+
+    /// 勝った人. 21 を超えなかった人のうち一番大きい点数の人(同点なら全員).
+    /// 全員バーストなら空.
+    var winnerIDs: [UserID] {
+        guard let round, isFinished else { return [] }
+        let alive = round.playerIDs.filter { !(round.hands[$0]?.isBust ?? true) }
+        guard let best = alive.compactMap({ round.hands[$0]?.bestValue }).max() else { return [] }
+        return alive.filter { round.hands[$0]?.bestValue == best }
+    }
+
+    enum Outcome: Hashable, Sendable {
+        case win, lose, draw
+
+        var title: String {
+            switch self {
+            case .win: String(localized: "勝ち")
+            case .lose: String(localized: "負け")
+            case .draw: String(localized: "引き分け")
+            }
+        }
+    }
+
+    func outcome(for userID: UserID) -> Outcome? {
+        guard isFinished, round?.hands[userID] != nil else { return nil }
+        let winners = winnerIDs
+        // 全員バーストなら勝った人がいないので, 全員引き分け扱い.
+        guard !winners.isEmpty else { return .draw }
+        guard winners.contains(userID) else { return .lose }
+        return winners.count == 1 ? .win : .draw
     }
 
     // MARK: - 札の数え方
@@ -134,13 +161,7 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
         for playerID in playerIDs {
             hands[playerID] = PlayerState(cards: [drawCard(), drawCard()], isStanding: false)
         }
-        return Round(
-            playerIDs: playerIDs,
-            bet: bet,
-            hands: hands,
-            dealerCards: [drawCard()],
-            isDealerDone: false
-        )
+        return Round(playerIDs: playerIDs, bet: bet, hands: hands)
     }
 
     // MARK: - 手を進める
@@ -163,95 +184,34 @@ struct BlackjackSnapshot: Hashable, Sendable, Codable {
         return next
     }
 
-    /// ディーラーが引き終わるところまで進める. 全員が引き終わっていなければ nil.
-    ///
-    /// 誰の端末が呼んでも結果は同じ形になる(その時点で引き切ってしまう).
-    func resolvingDealer() -> BlackjackSnapshot? {
-        guard isAwaitingDealer, var round else { return nil }
-        // 全員バーストしているならディーラーは引かなくてよい(勝負が付いている).
-        let someoneAlive = round.playerIDs.contains { !(round.hands[$0]?.isBust ?? true) }
-        if someoneAlive {
-            var generator = SeededGenerator(
-                seed: ColorBattleSnapshot.hash(Self.dealerSeed(gameID: gameID, round: round))
-            )
-            while Self.bestValue(of: round.dealerCards) < Self.dealerStandsAt {
-                round.dealerCards.append(Self.drawCard(using: &generator))
-            }
-        }
-        round.isDealerDone = true
-        var next = self
-        next.phase = .playing(round)
-        return next
-    }
-
-    /// 確定した場の状態から作る種.
-    ///
-    /// 全員が引き終わってからでないと定まらないので, 先に覗いて HIT / STAND を
-    /// 決めることはできない. 逆に, 全員が引き終わったあとはどの端末で計算しても
-    /// 同じ並びになるため, 誰が先にディーラーを進めても結果が食い違わない.
-    private static func dealerSeed(gameID: String, round: Round) -> String {
-        let hands = round.playerIDs
-            .map { playerID in
-                let cards = (round.hands[playerID]?.cards ?? []).map(\.id).joined(separator: ",")
-                return "\(playerID.rawValue):\(cards)"
-            }
-            .joined(separator: "|")
-        let dealer = round.dealerCards.map(\.id).joined(separator: ",")
-        return "\(gameID)#\(hands)#\(dealer)"
-    }
-
-    private static func drawCard(using generator: inout SeededGenerator) -> PlayingCard {
-        let suits = PlayingSuit.allCases
-        let ranks = PlayingRank.allCases
-        let suit = suits[Int(generator.next() % UInt64(suits.count))]
-        let rank = ranks[Int(generator.next() % UInt64(ranks.count))]
-        return PlayingCard(suit: suit, rank: rank)
-    }
-
     // MARK: - 精算
 
-    /// ディーラーとの 1 対 1 の勝負なので, 参加者ごとに独立して計算する.
+    /// 負けた人が出した分を, 勝った人で分ける.
+    ///
+    /// 全員が同じ額を賭けているので, 「負けた人数 × 賭け額」が勝った人の取り分に
+    /// なる. 同点で勝った人が複数いるときは山分けし, 割り切れない端数は
+    /// 並び順の先頭から 1 ずつ足して総量を合わせる(CHIP が増減しないように).
     var chipDeltas: [UserID: Int] {
-        guard let round, round.isDealerDone else { return [:] }
+        guard let round, isFinished else { return [:] }
+        let winners = winnerIDs
+        guard !winners.isEmpty else {
+            // 全員バースト. 誰も勝っていないので増減なし.
+            return Dictionary(uniqueKeysWithValues: round.playerIDs.map { ($0, 0) })
+        }
+
         var deltas: [UserID: Int] = [:]
-        for playerID in round.playerIDs {
-            guard let state = round.hands[playerID] else { continue }
-            deltas[playerID] = outcome(of: state, round: round).delta(bet: round.bet)
+        let losers = round.playerIDs.filter { !winners.contains($0) }
+        for loser in losers {
+            deltas[loser] = -round.bet
+        }
+
+        let pot = round.bet * losers.count
+        let share = pot / winners.count
+        let remainder = pot % winners.count
+        for (index, winner) in winners.enumerated() {
+            deltas[winner] = share + (index < remainder ? 1 : 0)
         }
         return deltas
-    }
-
-    enum Outcome: Hashable, Sendable {
-        case win, lose, push
-
-        var title: String {
-            switch self {
-            case .win: String(localized: "勝ち")
-            case .lose: String(localized: "負け")
-            case .push: String(localized: "引き分け")
-            }
-        }
-
-        func delta(bet: Int) -> Int {
-            switch self {
-            case .win: bet
-            case .lose: -bet
-            case .push: 0
-            }
-        }
-    }
-
-    func outcome(of state: PlayerState, round: Round) -> Outcome {
-        if state.isBust { return .lose }
-        if round.isDealerBust { return .win }
-        if state.bestValue > round.dealerValue { return .win }
-        if state.bestValue < round.dealerValue { return .lose }
-        return .push
-    }
-
-    func outcome(for userID: UserID) -> Outcome? {
-        guard let round, round.isDealerDone, let state = round.hands[userID] else { return nil }
-        return outcome(of: state, round: round)
     }
 }
 

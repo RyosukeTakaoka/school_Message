@@ -150,6 +150,8 @@ struct ChipGameLobbySection: View {
     let isSending: Bool
     let onJoin: () -> Void
     let onLeave: (() -> Void)?
+    /// 募集した人が募集ごと取りやめる. 始まる前だけ呼べる.
+    let onCancel: (() -> Void)?
     let onStart: () -> Void
 
     private var store: ChatStore { environment.store }
@@ -210,6 +212,14 @@ struct ChipGameLobbySection: View {
                     Button(String(localized: "開始する"), action: onStart)
                         .buttonStyle(.borderedProminent)
                         .disabled(isSending || lobby.joinedPlayerIDs.count < kind.minimumPlayers)
+
+                    // 始まる前なら, 募集した人はいつでも取りやめられる.
+                    // 始まったあとは取り消せない(賭けを無かったことにできないように).
+                    if let onCancel {
+                        Button(String(localized: "募集を取り消す"), role: .destructive, action: onCancel)
+                            .buttonStyle(.bordered)
+                            .disabled(isSending)
+                    }
                 }
             }
         }

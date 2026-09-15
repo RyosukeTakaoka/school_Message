@@ -17,6 +17,12 @@ struct OthelloSnapshot: Hashable, Sendable, Codable {
     /// 決着したか.
     var isFinished: Bool
 
+    /// 途中でやめた対戦か.
+    ///
+    /// Optional なのは, この項目が無い頃に送られたメッセージも読めるようにするため
+    /// (`nil` は「取り消されていない」と同じ扱い).
+    var isCancelled: Bool? = nil
+
     /// 盤面を組み立て直す.
     var othelloBoard: OthelloBoard? {
         OthelloBoard(encoded: board, turn: turn, lastMove: lastMove)

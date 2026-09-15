@@ -109,6 +109,10 @@ struct ChinchiroSnapshot: Hashable, Sendable, Codable {
     var hostID: UserID
     var phase: Phase
 
+    /// 募集を取り消したか. Optional なのは, この項目が無い頃に送られた
+    /// メッセージも読めるようにするため(`nil` は「取り消されていない」).
+    var isCancelled: Bool? = nil
+
     static func newLobby(hostID: UserID, bet: Int) -> ChinchiroSnapshot {
         ChinchiroSnapshot(
             gameID: UUID().uuidString,

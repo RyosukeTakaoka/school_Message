@@ -329,21 +329,14 @@ extension ChatStore {
               let next = snapshot.hitting(by: me)
         else { return }
         await sendGameMove(.blackjack(next), in: conversationID)
+        // 自分がバーストして全員が終わった場合は, ここで決着する.
+        await settleChipsIfNeeded(for: .blackjack(next))
     }
 
     func standBlackjack(in conversationID: ConversationID) async {
         guard let me = currentUserID,
               let snapshot = currentGame(kind: .blackjack, in: conversationID)?.blackjack,
               let next = snapshot.standing(by: me)
-        else { return }
-        await sendGameMove(.blackjack(next), in: conversationID)
-    }
-
-    /// 全員が引き終わったらディーラーを進める(画面がこの状態を見つけたら自動で呼ぶ).
-    func resolveBlackjackDealerIfNeeded(in conversationID: ConversationID) async {
-        guard let snapshot = currentGame(kind: .blackjack, in: conversationID)?.blackjack,
-              snapshot.isAwaitingDealer,
-              let next = snapshot.resolvingDealer()
         else { return }
         await sendGameMove(.blackjack(next), in: conversationID)
         await settleChipsIfNeeded(for: .blackjack(next))
