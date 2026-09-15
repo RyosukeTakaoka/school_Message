@@ -93,21 +93,34 @@ extension CloudKitBackend {
             NSSortDescriptor(key: CKSchema.PlayerWallet.balance, ascending: false)
         ]
 
-        let records = try await queryWithRetry(query, limit: limit)
-        return records.compactMap { record in
+        // 1 回も遊んでいない人をあとで外すので, その分だけ多めに取っておく
+        // (「遊んだかどうか」は CloudKit の検索条件では書けないため).
+        let records = try await queryWithRetry(query, limit: min(limit * 3, Self.rankingFetchLimit))
+
+        let entries: [ChipRankingEntry] = records.compactMap { record in
             guard let ownerRaw = record[CKSchema.PlayerWallet.ownerID] as? String else { return nil }
             // なりすまし対策. 他人ぶんの財布を勝手に作られても採用しない.
             guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == ownerRaw else {
                 Log.backend.notice("ignoring wallet with mismatched creator")
                 return nil
             }
+            let playedGameIDs = record[CKSchema.PlayerWallet.settledGameIDs] as? [String] ?? []
+            // 配られたままの 1,000 CHIP で並ばれるとおもしろくないので,
+            // 1 回も遊んでいない人はランキングに入れない.
+            guard !playedGameIDs.isEmpty else { return nil }
+
             return ChipRankingEntry(
                 ownerID: UserID(ownerRaw),
                 balance: record[CKSchema.PlayerWallet.balance] as? Int ?? 0,
+                playedGameCount: playedGameIDs.count,
                 updatedAt: record[CKSchema.PlayerWallet.updatedAt] as? Date ?? record.modificationDate ?? .now
             )
         }
+        return Array(entries.prefix(limit))
     }
+
+    /// ランキングを組み立てるときに, 1 度に取ってくるレコード数の上限.
+    private static var rankingFetchLimit: Int { 200 }
 
     // MARK: - 内部
 

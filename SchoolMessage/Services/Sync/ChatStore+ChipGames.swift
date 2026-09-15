@@ -22,6 +22,11 @@ extension ChatStore {
 
     var chipBalance: Int { myWallet?.balance ?? 0 }
 
+    /// CHIP を使う対戦を 1 回でも終えたか(ランキングに載る条件).
+    var hasPlayedChipGame: Bool {
+        !(myWallet?.settledGameIDs.isEmpty ?? true)
+    }
+
     /// 復活のルーレットを回せる状態か.
     var isRevivalDue: Bool {
         myWallet?.isRevivalDue() ?? false

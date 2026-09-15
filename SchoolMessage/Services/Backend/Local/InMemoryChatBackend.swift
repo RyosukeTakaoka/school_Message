@@ -167,7 +167,16 @@ actor InMemoryChatBackend: ChatBackend {
 
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry] {
         walletsByUser.values
-            .map { ChipRankingEntry(ownerID: $0.ownerID, balance: $0.balance, updatedAt: $0.updatedAt) }
+            // 1 回も遊んでいない人はランキングに入れない(CloudKit 側と同じ扱い).
+            .filter { !$0.settledGameIDs.isEmpty }
+            .map {
+                ChipRankingEntry(
+                    ownerID: $0.ownerID,
+                    balance: $0.balance,
+                    playedGameCount: $0.settledGameIDs.count,
+                    updatedAt: $0.updatedAt
+                )
+            }
             .sorted { $0.balance > $1.balance }
             .prefix(limit)
             .map { $0 }

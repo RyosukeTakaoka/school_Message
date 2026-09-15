@@ -196,6 +196,11 @@ enum ChipRevivalWheel {
 struct ChipRankingEntry: Hashable, Sendable, Identifiable {
     let ownerID: UserID
     let balance: Int
+    /// 精算まで終わった対戦の数.
+    ///
+    /// 1 回も遊んでいない人は, 配られたままの CHIP でランキングに並んでしまい
+    /// おもしろくないので, 並べる前にここで振り分ける.
+    let playedGameCount: Int
     let updatedAt: Date
 
     var id: UserID { ownerID }
