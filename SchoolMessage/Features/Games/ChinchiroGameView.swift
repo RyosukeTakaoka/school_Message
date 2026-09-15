@@ -20,7 +20,7 @@ struct ChinchiroGameView: View {
     private var me: UserID? { store.currentUserID }
 
     private var snapshot: ChinchiroSnapshot? {
-        store.currentGame(kind: .chinchiro, in: conversationID)?.chinchiro
+        store.activeGame(kind: .chinchiro, in: conversationID)?.chinchiro
     }
 
     var body: some View {
@@ -35,7 +35,8 @@ struct ChinchiroGameView: View {
                             hostID: snapshot.hostID,
                             isSending: isSending,
                             onJoin: { run { await store.joinChinchiro(in: conversationID) } },
-                            onLeave: nil,
+                            onLeave: { run { await store.leaveGameLobby(kind: .chinchiro, in: conversationID) } },
+                            onCancel: { run { await store.cancelGame(kind: .chinchiro, in: conversationID) } },
                             onStart: { run { await store.startChinchiro(in: conversationID) } }
                         )
                     case .rolling:

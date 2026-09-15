@@ -268,6 +268,43 @@ extension ChatStore {
             .content.game
     }
 
+    /// いま遊べる対戦. 取り消されたものは「無い」ものとして扱う.
+    ///
+    /// こうしておくと, 取り消した直後の画面が自動で「対戦を始める」に戻り,
+    /// すぐ次を始められる.
+    func activeGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) -> GameSnapshot? {
+        guard let game = currentGame(kind: kind, in: conversationID), !game.isCancelled else { return nil }
+        return game
+    }
+
+    /// 対戦を取り消す.
+    ///
+    /// 取り消せる場面かどうかは `GameSnapshot.canCancel(by:)` が決める
+    /// (CHIP を賭ける遊びは, 始まる前の募集中だけ).
+    func cancelGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let game = currentGame(kind: kind, in: conversationID),
+              game.canCancel(by: me)
+        else { return }
+        await sendGameMove(game.cancelling(), in: conversationID)
+    }
+
+    /// 募集から抜ける(参加を取りやめる).
+    ///
+    /// 募集した人は抜けられない(代わりに募集ごと取り消す).
+    func leaveGameLobby(kind: GameSnapshot.Kind, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let game = currentGame(kind: kind, in: conversationID)
+        else { return }
+        guard let next = game.leavingLobby(by: me) else {
+            if game.isWaitingForPlayers, me == game.hostID {
+                banner = .underlying(String(localized: "募集した人は「募集を取り消す」で取りやめてください"))
+            }
+            return
+        }
+        await sendGameMove(next, in: conversationID)
+    }
+
     /// 色勝負を始める.
     ///
     /// 配った手札は, 自分の分は自分の公開鍵宛てに, 相手の分は相手の公開鍵宛てに
@@ -338,24 +375,6 @@ extension ChatStore {
               !lobby.joinedPlayerIDs.contains(me)
         else { return }
         lobby.joinedPlayerIDs.append(me)
-        var next = snapshot
-        next.phase = .lobby(lobby)
-        await sendGameMove(.daifugo(next), in: conversationID)
-    }
-
-    /// ロビーから抜ける(参加を取り消す). ホストが抜けた場合はロビーごと
-    /// 取りやめにする(仕切り直してもらう).
-    func leaveDaifugoLobby(in conversationID: ConversationID) async {
-        guard let me = currentUserID,
-              let snapshot = currentGame(kind: .daifugo, in: conversationID)?.daifugo,
-              case .lobby(var lobby) = snapshot.phase,
-              lobby.joinedPlayerIDs.contains(me)
-        else { return }
-        guard me != snapshot.hostID else {
-            banner = .underlying(String(localized: "募集した人は取りやめられません。参加者に声をかけてください"))
-            return
-        }
-        lobby.joinedPlayerIDs.removeAll { $0 == me }
         var next = snapshot
         next.phase = .lobby(lobby)
         await sendGameMove(.daifugo(next), in: conversationID)

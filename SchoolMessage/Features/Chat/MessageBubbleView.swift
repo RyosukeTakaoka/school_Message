@@ -368,6 +368,9 @@ struct MessageBubbleView: View {
     }
 
     private func gameStatusText(_ snapshot: GameSnapshot) -> String {
+        if snapshot.isCancelled {
+            return String(localized: "取り消されました")
+        }
         switch snapshot {
         case .othello(let state): othelloStatusText(state)
         case .colorBattle(let state): colorBattleStatusText(state)

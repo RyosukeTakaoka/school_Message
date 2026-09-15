@@ -46,6 +46,12 @@ struct BoardThreadView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(Palette.chatBackground)
+            // 下に引っ張って更新する. ポーリングも動いているが, 自分で
+            // 引いて更新できたほうが「いま最新か」が分かりやすい.
+            .refreshable { await load() }
+            // 書き込み欄以外をタップ, または下へスワイプでキーボードを閉じる.
+            .dismissesKeyboardOnTap()
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: posts.last?.id) { _, newValue in
                 guard let newValue else { return }
                 withAnimation { proxy.scrollTo(newValue, anchor: .bottom) }
@@ -56,7 +62,6 @@ struct BoardThreadView: View {
         }
         .navigationTitle(thread.title)
         .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await load() }
         .task { await loadAndPoll() }
         .safeAreaInset(edge: .top) {
             if let error = store.banner {

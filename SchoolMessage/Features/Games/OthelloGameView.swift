@@ -20,7 +20,7 @@ struct OthelloGameView: View {
 
     /// いまの盤面. メッセージ側が更新されると自動で追従する.
     private var snapshot: OthelloSnapshot? {
-        store.currentGame(kind: .othello, in: conversationID)?.othello
+        store.activeGame(kind: .othello, in: conversationID)?.othello
     }
 
     private var myDisc: OthelloDisc? {
@@ -238,8 +238,17 @@ struct OthelloGameView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(isSending)
-        } else if isSending {
-            ProgressView()
+        } else {
+            HStack(spacing: AppConstants.Layout.standardSpacing) {
+                if isSending { ProgressView() }
+                // 間違えて始めたときや, 相手が戻ってこないときのために,
+                // 途中でもやめられるようにしておく(賭けが無いので害が無い).
+                Button(String(localized: "対戦をやめる"), role: .destructive) {
+                    Task { await store.cancelGame(kind: .othello, in: conversationID) }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSending)
+            }
         }
     }
 

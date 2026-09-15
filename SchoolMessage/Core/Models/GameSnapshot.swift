@@ -138,23 +138,165 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         }
     }
 
+    /// 募集した人. 募集の段階がある遊びだけ持つ.
+    var hostID: UserID? {
+        switch self {
+        case .othello, .colorBattle: nil
+        case .daifugo(let state): state.hostID
+        case .indianPoker(let state): state.hostID
+        case .doubt(let state): state.hostID
+        case .blackjack(let state): state.hostID
+        case .chinchiro(let state): state.hostID
+        }
+    }
+
+    /// 取り消された対戦か.
+    var isCancelled: Bool {
+        switch self {
+        case .othello(let state): state.isCancelled == true
+        case .colorBattle(let state): state.isCancelled == true
+        case .daifugo(let state): state.isCancelled == true
+        case .indianPoker(let state): state.isCancelled == true
+        case .doubt(let state): state.isCancelled == true
+        case .blackjack(let state): state.isCancelled == true
+        case .chinchiro(let state): state.isCancelled == true
+        }
+    }
+
+    /// まだ始まっていない(参加者を募っている)段階か.
+    var isWaitingForPlayers: Bool {
+        switch self {
+        case .othello, .colorBattle:
+            // この 2 つは募集の段階が無く, 始めた時点で対戦が始まる.
+            return false
+        case .daifugo(let state):
+            if case .lobby = state.phase { return true }
+            return false
+        case .indianPoker(let state): return state.lobby != nil
+        case .doubt(let state): return state.lobby != nil
+        case .blackjack(let state): return state.lobby != nil
+        case .chinchiro(let state): return state.lobby != nil
+        }
+    }
+
+    /// いまこの人がこの対戦を取り消せるか.
+    ///
+    /// CHIP を賭ける遊びは**まだ始まっていない(募集中の)ときだけ**, 募集した人が
+    /// 取り消せる. 始まったあとにも取り消せると, 負けそうな人が賭けを無かったことに
+    /// できてしまうため.
+    ///
+    /// CHIP を使わない遊び(オセロ・色勝負・大富豪の募集)は賭けが無いので,
+    /// オセロと色勝負は参加者なら途中でもやめられる.
+    func canCancel(by userID: UserID) -> Bool {
+        guard !isCancelled, !isFinished else { return false }
+        switch self {
+        case .othello(let state):
+            return state.blackPlayerID == userID || state.whitePlayerID == userID
+        case .colorBattle(let state):
+            return state.isPlayer(userID)
+        case .daifugo(let state):
+            return isWaitingForPlayers && state.hostID == userID
+        case .indianPoker(let state):
+            return isWaitingForPlayers && state.hostID == userID
+        case .doubt(let state):
+            return isWaitingForPlayers && state.hostID == userID
+        case .blackjack(let state):
+            return isWaitingForPlayers && state.hostID == userID
+        case .chinchiro(let state):
+            return isWaitingForPlayers && state.hostID == userID
+        }
+    }
+
+    /// 取り消した状態.
+    func cancelling() -> GameSnapshot {
+        switch self {
+        case .othello(var state):
+            state.isCancelled = true
+            return .othello(state)
+        case .colorBattle(var state):
+            state.isCancelled = true
+            return .colorBattle(state)
+        case .daifugo(var state):
+            state.isCancelled = true
+            return .daifugo(state)
+        case .indianPoker(var state):
+            state.isCancelled = true
+            return .indianPoker(state)
+        case .doubt(var state):
+            state.isCancelled = true
+            return .doubt(state)
+        case .blackjack(var state):
+            state.isCancelled = true
+            return .blackjack(state)
+        case .chinchiro(var state):
+            state.isCancelled = true
+            return .chinchiro(state)
+        }
+    }
+
+    /// 募集から抜けた状態. 抜けられない場面(募集中でない・募集した人本人)なら nil.
+    ///
+    /// 募集した人は抜けるのではなく, 募集ごと取り消す(`cancelling`).
+    func leavingLobby(by userID: UserID) -> GameSnapshot? {
+        guard isWaitingForPlayers, !isCancelled else { return nil }
+        switch self {
+        case .othello, .colorBattle:
+            return nil
+        case .daifugo(var state):
+            guard case .lobby(var lobby) = state.phase,
+                  state.hostID != userID,
+                  lobby.joinedPlayerIDs.contains(userID)
+            else { return nil }
+            lobby.joinedPlayerIDs.removeAll { $0 == userID }
+            state.phase = .lobby(lobby)
+            return .daifugo(state)
+        case .indianPoker(var state):
+            guard var lobby = state.lobby, state.hostID != userID,
+                  lobby.joinedPlayerIDs.contains(userID) else { return nil }
+            lobby.joinedPlayerIDs.removeAll { $0 == userID }
+            state.phase = .lobby(lobby)
+            return .indianPoker(state)
+        case .doubt(var state):
+            guard var lobby = state.lobby, state.hostID != userID,
+                  lobby.joinedPlayerIDs.contains(userID) else { return nil }
+            lobby.joinedPlayerIDs.removeAll { $0 == userID }
+            state.phase = .lobby(lobby)
+            return .doubt(state)
+        case .blackjack(var state):
+            guard var lobby = state.lobby, state.hostID != userID,
+                  lobby.joinedPlayerIDs.contains(userID) else { return nil }
+            lobby.joinedPlayerIDs.removeAll { $0 == userID }
+            state.phase = .lobby(lobby)
+            return .blackjack(state)
+        case .chinchiro(var state):
+            guard var lobby = state.lobby, state.hostID != userID,
+                  lobby.joinedPlayerIDs.contains(userID) else { return nil }
+            lobby.joinedPlayerIDs.removeAll { $0 == userID }
+            state.phase = .lobby(lobby)
+            return .chinchiro(state)
+        }
+    }
+
     /// 決着した対戦の CHIP 増減. CHIP を使わない / まだ決着していないなら空.
     ///
     /// 各自の端末は, ここから**自分のぶんだけ**を取り出して自分の残高に反映する
     /// (他人の残高は書き換えられない仕組みのため).
     var chipDeltas: [UserID: Int] {
+        // 取り消した対戦では CHIP を動かさない(賭ける前に取り消しているため).
+        guard !isCancelled else { return [:] }
         switch self {
-        case .othello, .colorBattle, .daifugo: [:]
-        case .indianPoker(let state): state.chipDeltas
-        case .doubt(let state): state.chipDeltas
-        case .blackjack(let state): state.chipDeltas
-        case .chinchiro(let state): state.chipDeltas
+        case .othello, .colorBattle, .daifugo: return [:]
+        case .indianPoker(let state): return state.chipDeltas
+        case .doubt(let state): return state.chipDeltas
+        case .blackjack(let state): return state.chipDeltas
+        case .chinchiro(let state): return state.chipDeltas
         }
     }
 
     /// チャット一覧や通知に出す 1 行.
     var previewText: String {
-        isFinished
+        if isCancelled { return String(localized: "\(kind.title)(取り消し)") }
+        return isFinished
             ? String(localized: "\(kind.title)(対戦終了)")
             : kind.title
     }

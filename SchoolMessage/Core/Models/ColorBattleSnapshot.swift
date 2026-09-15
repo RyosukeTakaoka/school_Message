@@ -101,6 +101,10 @@ struct ColorBattleSnapshot: Hashable, Sendable, Codable {
     var lastRound: ColorBattleRound?
     var isFinished: Bool
 
+    /// 途中でやめた対戦か. Optional なのは, この項目が無い頃に送られた
+    /// メッセージも読めるようにするため(`nil` は「取り消されていない」).
+    var isCancelled: Bool? = nil
+
     // MARK: - 開始
 
     /// 新しい対戦を始める.

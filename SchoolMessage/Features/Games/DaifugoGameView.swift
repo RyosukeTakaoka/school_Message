@@ -25,7 +25,7 @@ struct DaifugoGameView: View {
     private var store: ChatStore { environment.store }
 
     private var snapshot: DaifugoSnapshot? {
-        store.currentGame(kind: .daifugo, in: conversationID)?.daifugo
+        store.activeGame(kind: .daifugo, in: conversationID)?.daifugo
     }
 
     private var currentRound: DaifugoSnapshot.Round? {
@@ -158,7 +158,7 @@ struct DaifugoGameView: View {
                     Button(String(localized: "参加を取りやめる"), role: .destructive) {
                         Task {
                             isSending = true
-                            await store.leaveDaifugoLobby(in: conversationID)
+                            await store.leaveGameLobby(kind: .daifugo, in: conversationID)
                             isSending = false
                         }
                     }
@@ -176,6 +176,16 @@ struct DaifugoGameView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(isSending || lobby.joinedPlayerIDs.count < DaifugoSnapshot.Lobby.minimumPlayers)
+
+                    Button(String(localized: "募集を取り消す"), role: .destructive) {
+                        Task {
+                            isSending = true
+                            await store.cancelGame(kind: .daifugo, in: conversationID)
+                            isSending = false
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isSending)
                 }
             }
         }

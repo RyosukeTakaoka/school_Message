@@ -29,7 +29,7 @@ struct ColorBattleGameView: View {
     private var store: ChatStore { environment.store }
 
     private var snapshot: ColorBattleSnapshot? {
-        store.currentGame(kind: .colorBattle, in: conversationID)?.colorBattle
+        store.activeGame(kind: .colorBattle, in: conversationID)?.colorBattle
     }
 
     private var me: UserID? { store.currentUserID }
@@ -236,6 +236,14 @@ struct ColorBattleGameView: View {
                     roundHeader(snapshot)
                     statusLine(snapshot, me: me)
                     fieldSection(snapshot, me: me)
+
+                    // 間違えて始めたときや, 相手が戻ってこないときのために,
+                    // 途中でもやめられるようにしておく(賭けが無いので害が無い).
+                    Button(String(localized: "対戦をやめる"), role: .destructive) {
+                        Task { await store.cancelGame(kind: .colorBattle, in: conversationID) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isSending)
                 }
 
                 if let last = snapshot.lastRound {

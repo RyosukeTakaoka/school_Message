@@ -2,6 +2,7 @@ import SwiftUI
 import PhotosUI
 import AVFoundation
 import CoreMedia
+import GameController
 
 /// メッセージ入力欄.
 ///
@@ -549,9 +550,16 @@ struct ComposerTextView: UIViewRepresentable {
             self.parent = parent
         }
 
-        /// Return が押された瞬間はここに来る. 変換中(未確定の文字列がある)
-        /// なら, ここでは何もせず true を返して, システムに変換確定を
-        /// 任せる. 確定済みの状態で押された Return だけを送信として扱う.
+        /// Return が押された瞬間はここに来る.
+        ///
+        /// 変換中(未確定の文字列がある)なら, ここでは何もせず true を返して
+        /// システムに変換確定を任せる.
+        ///
+        /// 確定済みの Return をどう扱うかは, キーボードの種類で分ける.
+        /// - **外付けキーボード**: そのまま送信する(タイピング中に手を
+        ///   動かさずに送れるほうが速いため. 以前からの操作感も変えない).
+        /// - **画面のキーボード**: 改行を入れる. 送信は送信ボタンで行う.
+        ///   Return を送信にしてしまうと, 長い文で改行が一切打てなくなるため.
         func textView(
             _ textView: UITextView,
             shouldChangeTextIn range: NSRange,
@@ -559,6 +567,7 @@ struct ComposerTextView: UIViewRepresentable {
         ) -> Bool {
             guard text == "\n" else { return true }
             guard textView.markedTextRange == nil else { return true }
+            guard GCKeyboard.coalesced != nil else { return true }
             parent.onSubmit()
             return false
         }

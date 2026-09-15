@@ -17,7 +17,7 @@ struct IndianPokerGameView: View {
     private var me: UserID? { store.currentUserID }
 
     private var snapshot: IndianPokerSnapshot? {
-        store.currentGame(kind: .indianPoker, in: conversationID)?.indianPoker
+        store.activeGame(kind: .indianPoker, in: conversationID)?.indianPoker
     }
 
     var body: some View {
@@ -32,7 +32,8 @@ struct IndianPokerGameView: View {
                             hostID: snapshot.hostID,
                             isSending: isSending,
                             onJoin: { run { await store.joinIndianPoker(in: conversationID) } },
-                            onLeave: nil,
+                            onLeave: { run { await store.leaveGameLobby(kind: .indianPoker, in: conversationID) } },
+                            onCancel: { run { await store.cancelGame(kind: .indianPoker, in: conversationID) } },
                             onStart: { run { await store.startIndianPoker(in: conversationID) } }
                         )
                     case .playing:
