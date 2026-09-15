@@ -239,11 +239,13 @@ struct ColorBattleGameView: View {
 
                     // 間違えて始めたときや, 相手が戻ってこないときのために,
                     // 途中でもやめられるようにしておく(賭けが無いので害が無い).
-                    Button(String(localized: "対戦をやめる"), role: .destructive) {
-                        Task { await store.cancelGame(kind: .colorBattle, in: conversationID) }
+                    if store.canCancelGame(kind: .colorBattle, in: conversationID) {
+                        Button(String(localized: "対戦をやめる"), role: .destructive) {
+                            Task { await store.cancelGame(kind: .colorBattle, in: conversationID) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isSending)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isSending)
                 }
 
                 if let last = snapshot.lastRound {

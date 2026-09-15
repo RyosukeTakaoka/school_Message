@@ -82,15 +82,26 @@ final class KeyboardDismissGesture: NSObject, UIGestureRecognizerDelegate {
 
 private struct KeyboardDismissAttacher: UIViewRepresentable {
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+    /// 窓に載った瞬間に仕掛ける.
+    ///
+    /// 作られた時点ではまだ窓が決まっていないので, 窓に載ったことを知らせて
+    /// くれる `didMoveToWindow` を使う(描画のたびに確かめる形だと,
+    /// 再描画が起きない画面で付け損ねることがある).
+    final class AttachingView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard let window = self.window else { return }
+            KeyboardDismissGesture.shared.attach(to: window)
+        }
+    }
+
+    func makeUIView(context: Context) -> AttachingView {
+        let view = AttachingView(frame: .zero)
         view.isUserInteractionEnabled = false
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {
-        // 生成の時点ではまだ窓に載っていないことがあるので, 描画のたびに確かめる
-        // (`attach` は同じ窓に二度付けない).
+    func updateUIView(_ uiView: AttachingView, context: Context) {
         guard let window = uiView.window else { return }
         KeyboardDismissGesture.shared.attach(to: window)
     }

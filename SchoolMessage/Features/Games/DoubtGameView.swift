@@ -36,7 +36,9 @@ struct DoubtGameView: View {
                             isSending: isSending,
                             onJoin: { run { await store.joinDoubt(in: conversationID) } },
                             onLeave: { run { await store.leaveGameLobby(kind: .doubt, in: conversationID) } },
-                            onCancel: { run { await store.cancelGame(kind: .doubt, in: conversationID) } },
+                            onCancel: store.canCancelGame(kind: .doubt, in: conversationID)
+                                ? { run { await store.cancelGame(kind: .doubt, in: conversationID) } }
+                                : nil,
                             onStart: { run { await store.startDoubt(in: conversationID) } }
                         )
                     case .round(let round):

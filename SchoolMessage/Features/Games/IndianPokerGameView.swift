@@ -33,7 +33,9 @@ struct IndianPokerGameView: View {
                             isSending: isSending,
                             onJoin: { run { await store.joinIndianPoker(in: conversationID) } },
                             onLeave: { run { await store.leaveGameLobby(kind: .indianPoker, in: conversationID) } },
-                            onCancel: { run { await store.cancelGame(kind: .indianPoker, in: conversationID) } },
+                            onCancel: store.canCancelGame(kind: .indianPoker, in: conversationID)
+                                ? { run { await store.cancelGame(kind: .indianPoker, in: conversationID) } }
+                                : nil,
                             onStart: { run { await store.startIndianPoker(in: conversationID) } }
                         )
                     case .playing:

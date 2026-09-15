@@ -277,16 +277,29 @@ extension ChatStore {
         return game
     }
 
+    /// いまこの人がこの対戦を取り消せるか(画面にボタンを出すかの判定に使う).
+    func canCancelGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) -> Bool {
+        guard let me = currentUserID, let game = currentGame(kind: kind, in: conversationID) else {
+            return false
+        }
+        return game.canCancel(by: me, allowsAnyPlayer: isDirectConversation(conversationID))
+    }
+
     /// 対戦を取り消す.
     ///
-    /// 取り消せる場面かどうかは `GameSnapshot.canCancel(by:)` が決める
-    /// (CHIP を賭ける遊びは, 始まる前の募集中だけ).
+    /// 取り消せる場面かどうかは `GameSnapshot.canCancel(by:allowsAnyPlayer:)` が
+    /// 決める(CHIP を賭ける遊びは, 始まる前の募集中だけ).
     func cancelGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) async {
         guard let me = currentUserID,
               let game = currentGame(kind: kind, in: conversationID),
-              game.canCancel(by: me)
+              game.canCancel(by: me, allowsAnyPlayer: isDirectConversation(conversationID))
         else { return }
         await sendGameMove(game.cancelling(), in: conversationID)
+    }
+
+    /// 1 対 1 のチャットか. 取り消せる人の範囲を決めるのに使う.
+    private func isDirectConversation(_ conversationID: ConversationID) -> Bool {
+        conversation(conversationID)?.kind == .direct
     }
 
     /// 募集から抜ける(参加を取りやめる).

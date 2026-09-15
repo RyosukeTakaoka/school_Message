@@ -243,11 +243,13 @@ struct OthelloGameView: View {
                 if isSending { ProgressView() }
                 // 間違えて始めたときや, 相手が戻ってこないときのために,
                 // 途中でもやめられるようにしておく(賭けが無いので害が無い).
-                Button(String(localized: "対戦をやめる"), role: .destructive) {
-                    Task { await store.cancelGame(kind: .othello, in: conversationID) }
+                if store.canCancelGame(kind: .othello, in: conversationID) {
+                    Button(String(localized: "対戦をやめる"), role: .destructive) {
+                        Task { await store.cancelGame(kind: .othello, in: conversationID) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isSending)
                 }
-                .buttonStyle(.bordered)
-                .disabled(isSending)
             }
         }
     }

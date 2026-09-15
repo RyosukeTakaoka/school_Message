@@ -33,7 +33,9 @@ struct BlackjackGameView: View {
                             isSending: isSending,
                             onJoin: { run { await store.joinBlackjack(in: conversationID) } },
                             onLeave: { run { await store.leaveGameLobby(kind: .blackjack, in: conversationID) } },
-                            onCancel: { run { await store.cancelGame(kind: .blackjack, in: conversationID) } },
+                            onCancel: store.canCancelGame(kind: .blackjack, in: conversationID)
+                                ? { run { await store.cancelGame(kind: .blackjack, in: conversationID) } }
+                                : nil,
                             onStart: { run { await store.startBlackjack(in: conversationID) } }
                         )
                     case .playing(let round):

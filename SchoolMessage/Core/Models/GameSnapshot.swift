@@ -150,6 +150,29 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         }
     }
 
+    /// この対戦に関わっている人.
+    var playerIDs: [UserID] {
+        switch self {
+        case .othello(let state):
+            return [state.blackPlayerID, state.whitePlayerID]
+        case .colorBattle(let state):
+            return [state.firstPlayerID, state.secondPlayerID]
+        case .daifugo(let state):
+            switch state.phase {
+            case .lobby(let lobby): return lobby.joinedPlayerIDs
+            case .round(let round): return round.seating
+            }
+        case .indianPoker(let state):
+            return state.playerIDs
+        case .doubt(let state):
+            return state.playerIDs
+        case .blackjack(let state):
+            return state.playerIDs
+        case .chinchiro(let state):
+            return state.playerIDs
+        }
+    }
+
     /// 取り消された対戦か.
     var isCancelled: Bool {
         switch self {
@@ -187,23 +210,21 @@ enum GameSnapshot: Hashable, Sendable, Codable {
     ///
     /// CHIP を使わない遊び(オセロ・色勝負・大富豪の募集)は賭けが無いので,
     /// オセロと色勝負は参加者なら途中でもやめられる.
-    func canCancel(by userID: UserID) -> Bool {
+    ///
+    /// - Parameter allowsAnyPlayer: 1 対 1 のチャットでは true を渡す.
+    ///   相手が作った募集も取りやめられるようにするため(相手が戻ってこないと
+    ///   いつまでも次を始められない). グループでは募集した人だけが取り消せる.
+    func canCancel(by userID: UserID, allowsAnyPlayer: Bool = false) -> Bool {
         guard !isCancelled, !isFinished else { return false }
         switch self {
         case .othello(let state):
             return state.blackPlayerID == userID || state.whitePlayerID == userID
         case .colorBattle(let state):
             return state.isPlayer(userID)
-        case .daifugo(let state):
-            return isWaitingForPlayers && state.hostID == userID
-        case .indianPoker(let state):
-            return isWaitingForPlayers && state.hostID == userID
-        case .doubt(let state):
-            return isWaitingForPlayers && state.hostID == userID
-        case .blackjack(let state):
-            return isWaitingForPlayers && state.hostID == userID
-        case .chinchiro(let state):
-            return isWaitingForPlayers && state.hostID == userID
+        case .daifugo, .indianPoker, .doubt, .blackjack, .chinchiro:
+            guard isWaitingForPlayers else { return false }
+            if hostID == userID { return true }
+            return allowsAnyPlayer && playerIDs.contains(userID)
         }
     }
 
