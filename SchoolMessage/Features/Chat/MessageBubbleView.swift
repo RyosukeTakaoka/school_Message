@@ -372,28 +372,28 @@ struct MessageBubbleView: View {
             return String(localized: "取り消されました")
         }
         switch snapshot {
-        case .othello(let state): othelloStatusText(state)
-        case .colorBattle(let state): colorBattleStatusText(state)
-        case .daifugo(let state): daifugoStatusText(state)
-        case .indianPoker(let state): chipGameStatusText(
+        case .othello(let state): return othelloStatusText(state)
+        case .colorBattle(let state): return colorBattleStatusText(state)
+        case .daifugo(let state): return daifugoStatusText(state)
+        case .indianPoker(let state): return chipGameStatusText(
             isFinished: state.isFinished,
             playerCount: state.playerIDs.count,
             bet: state.bet,
             isLobby: state.lobby != nil
         )
-        case .doubt(let state): chipGameStatusText(
+        case .doubt(let state): return chipGameStatusText(
             isFinished: state.isFinished,
             playerCount: state.playerIDs.count,
             bet: state.bet,
             isLobby: state.lobby != nil
         )
-        case .blackjack(let state): chipGameStatusText(
+        case .blackjack(let state): return chipGameStatusText(
             isFinished: state.isFinished,
             playerCount: state.playerIDs.count,
             bet: state.bet,
             isLobby: state.lobby != nil
         )
-        case .chinchiro(let state): chipGameStatusText(
+        case .chinchiro(let state): return chipGameStatusText(
             isFinished: state.isFinished,
             playerCount: state.playerIDs.count,
             bet: state.bet,
