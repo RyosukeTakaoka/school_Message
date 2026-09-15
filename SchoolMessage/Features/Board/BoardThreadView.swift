@@ -49,8 +49,8 @@ struct BoardThreadView: View {
             // 下に引っ張って更新する. ポーリングも動いているが, 自分で
             // 引いて更新できたほうが「いま最新か」が分かりやすい.
             .refreshable { await load() }
-            // 書き込み欄以外をタップ, または下へスワイプでキーボードを閉じる.
-            .dismissesKeyboardOnTap()
+            // 下へスワイプしてもキーボードを閉じられるようにする
+            // (タップで閉じるほうは `RootView` でアプリ全体に仕込んである).
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: posts.last?.id) { _, newValue in
                 guard let newValue else { return }

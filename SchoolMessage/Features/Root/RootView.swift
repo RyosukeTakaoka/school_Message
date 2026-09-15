@@ -38,6 +38,9 @@ struct RootView: View {
         }
         .animation(.default, value: environment.store.phase)
         .animation(.default, value: needsConsentGate)
+        // 入力欄以外をタップしたらキーボードを閉じる. ここで 1 回仕込めば
+        // チャット・掲示板・プロフィールなど, どの画面でも同じように効く.
+        .dismissesKeyboardOnBackgroundTap()
     }
 }
 

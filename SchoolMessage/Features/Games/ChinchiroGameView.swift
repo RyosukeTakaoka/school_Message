@@ -113,6 +113,17 @@ struct ChinchiroGameView: View {
 
                 Divider()
                 resultsSection(snapshot)
+
+                // 全員が振り終わったら, そのまま次の対戦を始められるようにする.
+                if snapshot.isFinished {
+                    ChipGameRematchSection(
+                        kind: .chinchiro,
+                        previousBet: snapshot.bet,
+                        isSending: isSending
+                    ) { bet in
+                        run { await store.createChinchiroLobby(bet: bet, in: conversationID) }
+                    }
+                }
             }
             .padding(AppConstants.Layout.standardSpacing)
         }

@@ -138,11 +138,9 @@ struct BlackjackGameView: View {
                         }
                     }
                 }
-                Button(String(localized: "もう一回")) {
-                    run { await store.createBlackjackLobby(bet: round.bet, in: conversationID) }
+                ChipGameRematchSection(kind: .blackjack, previousBet: round.bet, isSending: isSending) { bet in
+                    run { await store.createBlackjackLobby(bet: bet, in: conversationID) }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isSending || !store.canPlayChipGames)
             } else if let me, snapshot.canAct(me) {
                 HStack(spacing: AppConstants.Layout.standardSpacing) {
                     Button(String(localized: "HIT")) {

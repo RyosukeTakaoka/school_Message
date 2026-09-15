@@ -227,6 +227,50 @@ struct ChipGameLobbySection: View {
     }
 }
 
+/// 決着したあと, 同じチャットですぐ次の対戦を始めるための部品.
+///
+/// 賭ける額を選び直せるようにしてあるのは, 「同じ額でもう一回」しかできないと
+/// 持ち CHIP が減ったときに次を始められなくなるため.
+struct ChipGameRematchSection: View {
+
+    @Environment(AppEnvironment.self) private var environment
+
+    let kind: GameSnapshot.Kind
+    /// 直前の対戦で賭けていた額. 最初はこれを選んでおく.
+    let previousBet: Int
+    let isSending: Bool
+    let onCreate: (Int) -> Void
+
+    @State private var chosenBet: Int?
+
+    private var store: ChatStore { environment.store }
+
+    /// 選び直していない間は直前の額を使う.
+    private var bet: Binding<Int> {
+        Binding(get: { chosenBet ?? previousBet }, set: { chosenBet = $0 })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppConstants.Layout.compactSpacing) {
+            Divider()
+            if let notice = store.bankruptNotice {
+                Label(notice, systemImage: "hourglass")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.failure)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                ChipBetPicker(maxBet: kind.maxBet ?? ChipRules.defaultMaxBet, bet: bet)
+                Button(String(localized: "この額でもう一回")) {
+                    onCreate(bet.wrappedValue)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSending || !store.canPlayChipGames)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// 決着したときに出す CHIP の増減.
 struct ChipResultBanner: View {
 
