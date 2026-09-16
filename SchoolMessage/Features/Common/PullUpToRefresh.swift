@@ -92,12 +92,19 @@ struct PullUpToRefresh: UIViewRepresentable {
         private func handle(_ scrollView: UIScrollView) {
             let insets = scrollView.adjustedContentInset
             let visibleHeight = scrollView.bounds.height - insets.top - insets.bottom
-            // 中身が画面に収まりきっているときは, 下端の引き上げが起きない.
-            guard visibleHeight > 0, scrollView.contentSize.height > visibleHeight else { return }
+            guard visibleHeight > 0 else { return }
+
+            // 中身が画面に収まりきっているとき, 自然な状態の下端は
+            // `contentSize.height` ではなく画面の高さそのものになる
+            // (中身が短いぶん, 上に余白ができるだけで下端はそこで止まるため).
+            // ここを `contentSize.height` のままにすると, 中身が短いスレッドでは
+            // 何もしていない状態がすでに「引き上げ済み」と判定されてしまい,
+            // 逆にどれだけ引いても反応しなくなる(実際に起きていた不具合).
+            let restingBottom = max(scrollView.contentSize.height, visibleHeight)
 
             // 下端をどれだけ超えて引き上げたか.
             let bottomEdge = scrollView.contentOffset.y + scrollView.bounds.height - insets.bottom
-            let overscroll = bottomEdge - scrollView.contentSize.height
+            let overscroll = bottomEdge - restingBottom
 
             if overscroll > threshold {
                 guard !hasTriggered else { return }
