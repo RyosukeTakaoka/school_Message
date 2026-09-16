@@ -102,6 +102,40 @@ DEFINE SCHEMA
         GRANT READ TO "_world"
     );
 
+    RECORD TYPE HorseRaceBet (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        amount          INT64,
+        bettorID        STRING QUERYABLE SEARCHABLE SORTABLE,
+        createdAt       TIMESTAMP QUERYABLE SORTABLE,
+        kind            STRING QUERYABLE SEARCHABLE SORTABLE,
+        raceID          STRING QUERYABLE SEARCHABLE SORTABLE,
+        selections      LIST<INT64>,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
+    RECORD TYPE HorseRaceResult (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        betIDs          LIST<STRING>,
+        lockedAt        TIMESTAMP QUERYABLE SORTABLE,
+        raceID          STRING QUERYABLE SEARCHABLE SORTABLE,
+        seed            STRING,
+        GRANT WRITE TO "_creator",
+        GRANT CREATE TO "_icloud",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE Message (
         "___createTime"   TIMESTAMP,
         "___createdBy"    REFERENCE,
