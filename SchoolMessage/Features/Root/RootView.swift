@@ -102,7 +102,7 @@ private struct MainSplitView: View {
     @State private var isShowingRevivalWheel = false
 
     private enum Sheet: String, Identifiable {
-        case friends, createGroup, streetPass, profile, chipRanking
+        case friends, createGroup, streetPass, profile, chipRanking, gameRules
         var id: String { rawValue }
     }
 
@@ -116,6 +116,7 @@ private struct MainSplitView: View {
                 onCreateGroup: { presentedSheet = .createGroup },
                 onShowBoard: { isShowingBoard = true },
                 onShowRanking: { presentedSheet = .chipRanking },
+                onShowGameRules: { presentedSheet = .gameRules },
                 onShowStreetPass: { presentedSheet = .streetPass },
                 onShowProfile: { presentedSheet = .profile }
             )
@@ -148,6 +149,8 @@ private struct MainSplitView: View {
                 ProfileView()
             case .chipRanking:
                 ChipRankingView()
+            case .gameRules:
+                GameRulesView()
             }
         }
         // チャットの一覧・書き込みが多いので、カード状のシートではなく

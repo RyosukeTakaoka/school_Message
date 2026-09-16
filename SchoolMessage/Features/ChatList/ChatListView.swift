@@ -14,6 +14,7 @@ struct ChatListView: View {
     var onCreateGroup: () -> Void
     var onShowBoard: () -> Void
     var onShowRanking: () -> Void
+    var onShowGameRules: () -> Void
     var onShowStreetPass: () -> Void
     var onShowProfile: () -> Void
 
@@ -26,6 +27,7 @@ struct ChatListView: View {
             Section {
                 boardEntryRow
                 rankingEntryRow
+                gameRulesEntryRow
             }
 
             Section {
@@ -170,6 +172,40 @@ struct ChatListView: View {
         .accessibilityLabel(String(localized: "CHIPランキング"))
     }
 
+    /// 対戦ルール一覧への入り口. ランキングのすぐ下に置き, 対戦を始める前でも
+    /// ルールをまとめて確認できるようにする.
+    private var gameRulesEntryRow: some View {
+        Button(action: onShowGameRules) {
+            HStack(spacing: AppConstants.Layout.standardSpacing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.purple.gradient)
+                        .frame(width: AppConstants.Layout.avatarMedium, height: AppConstants.Layout.avatarMedium)
+                    Image(systemName: "book.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: AppConstants.Layout.avatarMedium * 0.45, weight: .semibold))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("対戦ルール")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    Text("遊べるゲームのルールをまとめて見る")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.subdued)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.subdued)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "対戦ルール"))
+        .accessibilityHint(String(localized: "遊べるゲームのルールをまとめて見ます"))
+    }
+
     private var emptyState: some View {
         ContentUnavailableView {
             Label(String(localized: "まだチャットがありません"), systemImage: "bubble.left")
@@ -282,6 +318,7 @@ struct ChatListRow: View {
             onCreateGroup: {},
             onShowBoard: {},
             onShowRanking: {},
+            onShowGameRules: {},
             onShowStreetPass: {},
             onShowProfile: {}
         )
