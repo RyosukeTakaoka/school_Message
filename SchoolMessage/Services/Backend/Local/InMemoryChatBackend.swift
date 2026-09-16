@@ -167,6 +167,15 @@ actor InMemoryChatBackend: ChatBackend {
         return claimed
     }
 
+    func fetchWalletBalances(ownerIDs: [UserID]) async throws -> [UserID: Int] {
+        var balances: [UserID: Int] = [:]
+        for ownerID in ownerIDs {
+            guard let wallet = walletsByUser[ownerID] else { continue }
+            balances[ownerID] = wallet.balance
+        }
+        return balances
+    }
+
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry] {
         walletsByUser.values
             // 1 回も遊んでいない人はランキングに入れない(CloudKit 側と同じ扱い).

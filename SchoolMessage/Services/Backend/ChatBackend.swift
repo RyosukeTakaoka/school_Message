@@ -74,6 +74,13 @@ protocol ChatBackend: Sendable {
     /// CHIP ランキング(残高の多い順).
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry]
 
+    /// 指定した人たちの残高. 見つからなかった人は含まれない.
+    ///
+    /// 対戦を始める直前に「全員が賭け金を払えるか」を確かめるために使う.
+    /// 払えない人が混ざったまま始めると, 負けたときに残高が 0 で止まり,
+    /// 勝った人は満額受け取るため, 差額の CHIP が無から生まれてしまう.
+    func fetchWalletBalances(ownerIDs: [UserID]) async throws -> [UserID: Int]
+
     // MARK: 友達
 
     func fetchFriends() async throws -> [UserProfile]
