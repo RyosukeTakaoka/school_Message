@@ -276,8 +276,8 @@ struct HorseRaceView: View {
                     .foregroundStyle(Palette.subdued)
             }
 
-            // ゴール板をくぐった馬から順に出す.
-            ForEach(Array(run.topThree.prefix(revealed).enumerated()), id: \.offset) { index, number in
+            // ゴール板をくぐった馬から順に, 最下位まで全部出す.
+            ForEach(Array(run.finishingOrder.prefix(revealed).enumerated()), id: \.offset) { index, number in
                 HStack(spacing: 8) {
                     Text(placeLabel(index + 1))
                         .font(.subheadline.weight(.bold))
@@ -297,11 +297,7 @@ struct HorseRaceView: View {
     }
 
     private func placeLabel(_ place: Int) -> String {
-        switch place {
-        case 1: String(localized: "1着")
-        case 2: String(localized: "2着")
-        default: String(localized: "3着")
-        }
+        String(localized: "\(place)着")
     }
 
     // MARK: - 出走表

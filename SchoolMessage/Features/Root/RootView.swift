@@ -23,6 +23,10 @@ struct RootView: View {
             if needsConsentGate {
                 ConsentGateView()
                     .environment(environment.consent)
+            } else if environment.updateGate.isBlocking {
+                // 直さないと困る不具合を直したビルドが出ている. 下限を下回って
+                // いる間だけここで止める(最新かどうかは見ない).
+                UpdateRequiredView(required: environment.updateGate.required)
             } else {
                 switch environment.store.phase {
                 case .launching:
@@ -38,6 +42,7 @@ struct RootView: View {
         }
         .animation(.default, value: environment.store.phase)
         .animation(.default, value: needsConsentGate)
+        .animation(.default, value: environment.updateGate.isBlocking)
         // 入力欄以外をタップしたらキーボードを閉じる. ここで 1 回仕込めば
         // チャット・掲示板・プロフィールなど, どの画面でも同じように効く.
         .dismissesKeyboardOnBackgroundTap()
@@ -58,6 +63,36 @@ private struct LaunchPlaceholderView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.chatBackground)
         .accessibilityLabel(String(localized: "読み込み中"))
+    }
+}
+
+/// 古いビルドのままの人に, TestFlight から更新してもらうための案内.
+///
+/// 「最新にしてください」ではなく「このビルド以上にしてください」なので,
+/// 下限を上げたときだけ出る. 普段の更新はこの画面を出さずに済ませられる.
+private struct UpdateRequiredView: View {
+
+    let required: RequiredRelease?
+
+    private var updateURL: URL? { URL(string: AppConstants.testFlightInviteURL) }
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(String(localized: "アップデートが必要です"), systemImage: "arrow.down.circle")
+        } description: {
+            Text(required?.message
+                 ?? String(localized: "不具合を直した新しいバージョンが出ています。TestFlight から更新してください。"))
+        } actions: {
+            if let updateURL {
+                Link(destination: updateURL) {
+                    Text("TestFlight を開く")
+                        .font(.body.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Palette.chatBackground)
     }
 }
 

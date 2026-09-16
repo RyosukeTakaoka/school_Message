@@ -446,6 +446,9 @@ actor InMemoryChatBackend: ChatBackend {
 
     // MARK: - 競馬
 
+    /// プレビューでは下限を決めない(更新をお願いする画面は出さない).
+    func fetchRequiredRelease() async throws -> RequiredRelease? { nil }
+
     func fetchHorseRaceBets(raceID: String) async throws -> [HorseRaceBet] {
         horseRaceBets.filter { $0.raceID == raceID }
     }
