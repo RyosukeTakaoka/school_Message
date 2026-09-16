@@ -171,6 +171,26 @@ protocol ChatBackend: Sendable {
     /// 掲示板への新着通知を止める. 通知の設定でオフにしたときに呼ぶ.
     func removeBoardSubscription() async throws
 
+    // MARK: 競馬
+
+    /// そのレースに入っている馬券をすべて取る.
+    ///
+    /// 自分のぶんだけでなく全員ぶんを取るのは, 締切後の種が
+    /// 「出そろった馬券」から決まるため(`HorseRaceResult.makeSeed`).
+    func fetchHorseRaceBets(raceID: String) async throws -> [HorseRaceBet]
+
+    /// 馬券を買う.
+    func placeHorseRaceBet(_ bet: HorseRaceBet) async throws
+
+    /// レースの結果(種)を取る. まだ確定していなければ nil.
+    func fetchHorseRaceResult(raceID: String) async throws -> HorseRaceResult?
+
+    /// レースの種を確定させる.
+    ///
+    /// 同時に複数の端末が呼んでも, 先に確定した 1 件が返る
+    /// (recordName を開催日から決め打ちにしているため, 2 件目は作れない).
+    func lockHorseRaceResult(raceID: String, bets: [HorseRaceBet]) async throws -> HorseRaceResult
+
     // MARK: メディア
 
     /// 添付の本体を復号してローカルにダウンロードし, その URL を返す.

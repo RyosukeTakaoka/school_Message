@@ -102,7 +102,7 @@ private struct MainSplitView: View {
     @State private var isShowingRevivalWheel = false
 
     private enum Sheet: String, Identifiable {
-        case friends, createGroup, streetPass, profile, chipRanking, gameRules
+        case friends, createGroup, streetPass, profile, chipRanking, horseRace, gameRules
         var id: String { rawValue }
     }
 
@@ -116,6 +116,7 @@ private struct MainSplitView: View {
                 onCreateGroup: { presentedSheet = .createGroup },
                 onShowBoard: { isShowingBoard = true },
                 onShowRanking: { presentedSheet = .chipRanking },
+                onShowHorseRace: { presentedSheet = .horseRace },
                 onShowGameRules: { presentedSheet = .gameRules },
                 onShowStreetPass: { presentedSheet = .streetPass },
                 onShowProfile: { presentedSheet = .profile }
@@ -149,6 +150,8 @@ private struct MainSplitView: View {
                 ProfileView()
             case .chipRanking:
                 ChipRankingView()
+            case .horseRace:
+                HorseRaceView()
             case .gameRules:
                 GameRulesView()
             }

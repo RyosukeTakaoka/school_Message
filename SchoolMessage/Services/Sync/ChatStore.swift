@@ -198,6 +198,10 @@ final class ChatStore {
         flushOutbox()
 
         await configurePushSubscriptions()
+
+        // 馬券を買ったまま何日か開かなかった人にも, あとから払い戻しが届くようにする
+        // (競馬の画面を開かないと精算されない, という取りこぼしを防ぐ).
+        await settleRecentHorseRaces()
     }
 
     /// プッシュ購読を用意する.

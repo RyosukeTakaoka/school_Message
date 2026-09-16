@@ -14,6 +14,7 @@ struct ChatListView: View {
     var onCreateGroup: () -> Void
     var onShowBoard: () -> Void
     var onShowRanking: () -> Void
+    var onShowHorseRace: () -> Void
     var onShowGameRules: () -> Void
     var onShowStreetPass: () -> Void
     var onShowProfile: () -> Void
@@ -27,6 +28,7 @@ struct ChatListView: View {
             Section {
                 boardEntryRow
                 rankingEntryRow
+                horseRaceEntryRow
                 gameRulesEntryRow
             }
 
@@ -170,6 +172,39 @@ struct ChatListView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "CHIPランキング"))
+    }
+
+    /// 競馬への入り口. 平日 15:00 の 1 日 1 レースなので, 見逃さないよう
+    /// 掲示板やランキングと並べて一番上に置く.
+    private var horseRaceEntryRow: some View {
+        Button(action: onShowHorseRace) {
+            HStack(spacing: AppConstants.Layout.standardSpacing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.green.gradient)
+                        .frame(width: AppConstants.Layout.avatarMedium, height: AppConstants.Layout.avatarMedium)
+                    Text("🐎")
+                        .font(.system(size: AppConstants.Layout.avatarMedium * 0.45))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("競馬")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.primary)
+                    Text("平日15:00発走。14:50まで馬券を買えます")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.subdued)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Palette.subdued)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(localized: "競馬"))
+        .accessibilityHint(String(localized: "その日のレースの出走表と馬券の画面を開きます"))
     }
 
     /// 対戦ルール一覧への入り口. ランキングのすぐ下に置き, 対戦を始める前でも
@@ -318,6 +353,7 @@ struct ChatListRow: View {
             onCreateGroup: {},
             onShowBoard: {},
             onShowRanking: {},
+            onShowHorseRace: {},
             onShowGameRules: {},
             onShowStreetPass: {},
             onShowProfile: {}

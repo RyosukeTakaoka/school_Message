@@ -268,6 +268,34 @@ enum CKSchema {
         static let imageKind = "imageKind"
     }
 
+    // MARK: - 競馬
+
+    /// 馬券. 誰でも読める(締切後に全員が同じ種を計算できる必要があるため).
+    enum HorseRaceBet {
+        static let recordType = "HorseRaceBet"
+
+        static let raceID = "raceID"            // QUERYABLE
+        static let bettorID = "bettorID"        // QUERYABLE
+        static let kind = "kind"                // QUERYABLE
+        static let selections = "selections"    // Int(64) の List
+        static let amount = "amount"
+        static let createdAt = "createdAt"      // QUERYABLE, SORTABLE
+    }
+
+    /// レースの種を確定させる 1 件.
+    ///
+    /// recordName を開催日から決め打ちにしているので, 複数の端末が同時に
+    /// 作ろうとしてもサーバ側で 1 件しか作れない(2 件目は「既にある」で弾かれる).
+    /// これで全員が必ず同じ種のレースを見る.
+    enum HorseRaceResult {
+        static let recordType = "HorseRaceResult"
+
+        static let raceID = "raceID"            // QUERYABLE
+        static let seed = "seed"
+        static let betIDs = "betIDs"            // String の List
+        static let lockedAt = "lockedAt"        // QUERYABLE, SORTABLE
+    }
+
     // MARK: - Subscription
 
     enum SubscriptionID {

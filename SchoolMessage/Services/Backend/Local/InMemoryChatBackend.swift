@@ -22,6 +22,8 @@ actor InMemoryChatBackend: ChatBackend {
     private var readReceipts: [ConversationID: [UserID: Date]] = [:]
     private var boardThreads: [BoardThread] = []
     private var boardPosts: [BoardPost] = []
+    private var horseRaceBets: [HorseRaceBet] = []
+    private var horseRaceResults: [String: HorseRaceResult] = [:]
     /// メッセージ ID → (ユーザ → リアクション). 1 人 1 個までなのでユーザ単位で持つ.
     private var reactions: [MessageID: [UserID: MessageReaction]] = [:]
 
@@ -431,6 +433,35 @@ actor InMemoryChatBackend: ChatBackend {
 
     func downloadThumbnail(_ reference: MediaReference, conversationID: ConversationID) async throws -> Data {
         throw AppError.underlying("プレビューではメディアを取得できません")
+    }
+
+    // MARK: - 競馬
+
+    func fetchHorseRaceBets(raceID: String) async throws -> [HorseRaceBet] {
+        horseRaceBets.filter { $0.raceID == raceID }
+    }
+
+    func placeHorseRaceBet(_ bet: HorseRaceBet) async throws {
+        var stamped = bet
+        // 本番では CloudKit がサーバ側で打刻する値. ここでは代わりに入れておく.
+        stamped.serverCreatedAt = .now
+        horseRaceBets.append(stamped)
+    }
+
+    func fetchHorseRaceResult(raceID: String) async throws -> HorseRaceResult? {
+        horseRaceResults[raceID]
+    }
+
+    func lockHorseRaceResult(raceID: String, bets: [HorseRaceBet]) async throws -> HorseRaceResult {
+        if let existing = horseRaceResults[raceID] { return existing }
+        let result = HorseRaceResult(
+            raceID: raceID,
+            seed: HorseRaceResult.makeSeed(raceID: raceID, bets: bets),
+            betIDs: bets.map(\.id).sorted(),
+            lockedAt: .now
+        )
+        horseRaceResults[raceID] = result
+        return result
     }
 
     // MARK: - 変更通知
