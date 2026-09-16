@@ -15,6 +15,8 @@ struct DoubtGameView: View {
     @State private var myHand: [PlayingCard] = []
     @State private var selectedCards: Set<PlayingCard> = []
     @State private var settledDelta: Int?
+    /// 判定(嘘だった/本当だった)は, 札をめくり終えるまで隠しておく.
+    @State private var isVerdictHeadlineVisible = false
 
     private var store: ChatStore { environment.store }
     private var me: UserID? { store.currentUserID }
@@ -128,22 +130,33 @@ struct DoubtGameView: View {
     @ViewBuilder
     private func fieldSection(_ snapshot: DoubtSnapshot, round: DoubtSnapshot.Round) -> some View {
         if let play = round.lastPlay {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(store.displayName(for: play.playerID)) が「\(play.claimedRank.label)」を \(play.count)枚 出しました")
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(store.displayName(for: play.playerID)) が \(play.count)枚 出しました")
                     .font(.subheadline)
+                    .foregroundStyle(Palette.subdued)
+
+                // 「本当か嘘か」の宣言そのものが主役なので, 大きく残しておく.
+                HStack(spacing: 10) {
+                    Text("宣言")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Palette.subdued)
+                    Text(play.claimedRank.label)
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Palette.incomingBubble, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 HStack(spacing: 6) {
                     ForEach(0..<play.count, id: \.self) { _ in
-                        Text("?")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(Palette.subdued)
-                            .frame(width: 40, height: 56)
-                            .background(Palette.incomingBubble, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        CardBackView(size: .small)
                     }
                 }
 
                 if let me, snapshot.canCallDoubt(me) {
                     Button(String(localized: "ダウト!"), role: .destructive) {
+                        GameHaptics.tick()
                         run { await store.callDoubt(in: conversationID) }
                     }
                     .buttonStyle(.borderedProminent)
@@ -153,23 +166,40 @@ struct DoubtGameView: View {
         }
     }
 
+    /// ダウトされた札を裏向きのまま出し, 1枚ずつめくり終えてから
+    /// 「嘘だったか本当だったか」を見せる. `.id(verdict)` を付けているのは,
+    /// 次のダウトが起きたときにこの演出を最初からやり直すため.
     private func verdictSection(_ verdict: DoubtSnapshot.Verdict) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(verdict.wasLying ? String(localized: "嘘でした!") : String(localized: "本当でした"))
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(verdict.wasLying ? Palette.failure : .green)
-            HStack(spacing: 6) {
-                ForEach(Array(verdict.actualCards.enumerated()), id: \.offset) { _, card in
-                    PlayingCardView(card: card, size: .small)
+        VStack(alignment: .leading, spacing: 8) {
+            RevealingCardRow(cards: verdict.actualCards, size: .small, startFaceDown: true) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
+                    isVerdictHeadlineVisible = true
                 }
+                GameHaptics.result(didWin: verdict.wasLying)
             }
-            Text("\(store.displayName(for: verdict.penalizedID)) が \(verdict.actualCards.count)枚 引き取りました")
-                .font(.caption)
-                .foregroundStyle(Palette.subdued)
+            .id(verdict)
+
+            if isVerdictHeadlineVisible {
+                Text(verdict.wasLying ? String(localized: "嘘でした!") : String(localized: "本当でした"))
+                    .font(.title2.weight(.heavy))
+                    .foregroundStyle(verdict.wasLying ? Palette.failure : .green)
+                    .transition(.scale.combined(with: .opacity))
+
+                Text("\(store.displayName(for: verdict.penalizedID)) が \(verdict.actualCards.count)枚 引き取りました")
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
+                    .transition(.opacity)
+            }
         }
         .padding(AppConstants.Layout.compactSpacing)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.incomingBubble.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .onAppear { isVerdictHeadlineVisible = false }
+        .onChange(of: verdict) { _, _ in
+            // 「嘘で上がる」が続けて起きると, 画面から一度も消えないまま
+            // 次の判定に切り替わることがあるので, onAppear だけでなくここでもリセットする.
+            isVerdictHeadlineVisible = false
+        }
     }
 
     private func finishedSection(_ snapshot: DoubtSnapshot, round: DoubtSnapshot.Round) -> some View {

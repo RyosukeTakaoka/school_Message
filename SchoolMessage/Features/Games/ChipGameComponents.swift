@@ -1,4 +1,19 @@
 import SwiftUI
+import UIKit
+
+/// ゲームの節目で軽い触覚を鳴らす.
+///
+/// 派手にしすぎると鬱陶しいので, 「めくれた」のような小さな節目は軽い
+/// インパクトだけにし, 「結果が出た」場面だけ少し強めの通知にする.
+enum GameHaptics {
+    static func tick() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    static func result(didWin: Bool) {
+        UINotificationFeedbackGenerator().notificationOccurred(didWin ? .success : .warning)
+    }
+}
 
 /// 手持ちの CHIP.
 struct ChipBalanceBadge: View {
@@ -325,6 +340,119 @@ struct ChipGameScaffold<Content: View>: View {
                         ErrorBannerView(error: error) { store.setBanner(nil) }
                     }
                 }
+        }
+    }
+}
+
+/// カードの裏面. めくられる前の「溜め」の間, ずっとこれが見えている.
+struct CardBackView: View {
+
+    var size: PlayingCardView.Size = .large
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color.accentColor.gradient)
+            .overlay {
+                Image(systemName: "seal.fill")
+                    .font(.system(size: size.suitFontSize * 1.3))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.black.opacity(0.15), lineWidth: 1)
+            }
+            .frame(width: size.width, height: size.height)
+            .accessibilityHidden(true)
+    }
+}
+
+/// カードを 1 枚, めくる演出つきで出す.
+///
+/// `isFaceUp` が変わるたびに, 表と裏をそれぞれ 90度だけ逆向きに回して
+/// 透明度を入れ替える. 180度回して同じ面の裏側を見せる作りだと,
+/// 表の文字が一瞬鏡文字になって見えてしまうので, それぞれ 90度までしか回さない.
+struct FlippableCardView: View {
+
+    let card: PlayingCard
+    var size: PlayingCardView.Size = .large
+    var isFaceUp: Bool
+
+    var body: some View {
+        ZStack {
+            CardBackView(size: size)
+                .rotation3DEffect(.degrees(isFaceUp ? -90 : 0), axis: (x: 0, y: 1, z: 0))
+                .opacity(isFaceUp ? 0 : 1)
+            PlayingCardView(card: card, size: size)
+                .rotation3DEffect(.degrees(isFaceUp ? 0 : 90), axis: (x: 0, y: 1, z: 0))
+                .opacity(isFaceUp ? 1 : 0)
+        }
+    }
+}
+
+/// 手札や公開された札を並べて出す.
+///
+/// 増えた分(ブラックジャックの HIT)や, まだめくっていない分
+/// (ダウトで開示された札)を, 少し間を置いてから 1 枚ずつめくる.
+/// まとめて一気に出すと味気ないので, それぞれのカードの間に「溜め」を作る.
+struct RevealingCardRow: View {
+
+    let cards: [PlayingCard]
+    var size: PlayingCardView.Size = .small
+    var revealDelay: Duration = .milliseconds(400)
+    /// true: 表示された瞬間はまだ全部裏で, 最初から順番にめくる
+    ///   (ダウトの開示のように, 見せる瞬間そのものが本番のとき).
+    /// false: すでにある札はめくらず, 増えた分だけめくる(ブラックジャックの HIT).
+    var startFaceDown = false
+    /// 最後の 1 枚までめくり終えたときに呼ぶ.
+    var onFinishedRevealing: (() -> Void)?
+
+    @State private var faceUpCount: Int
+
+    init(
+        cards: [PlayingCard],
+        size: PlayingCardView.Size = .small,
+        revealDelay: Duration = .milliseconds(400),
+        startFaceDown: Bool = false,
+        onFinishedRevealing: (() -> Void)? = nil
+    ) {
+        self.cards = cards
+        self.size = size
+        self.revealDelay = revealDelay
+        self.startFaceDown = startFaceDown
+        self.onFinishedRevealing = onFinishedRevealing
+        _faceUpCount = State(initialValue: startFaceDown ? 0 : cards.count)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(cards.enumerated()), id: \.offset) { index, card in
+                FlippableCardView(card: card, size: size, isFaceUp: index < faceUpCount)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cards.count)
+        // `.task(id:)` にしておくと, 画面が閉じられたときに自動でこの演出も
+        // 打ち切られる(手動で Task を保持して cancel する必要が無い).
+        .task(id: cards.count) {
+            await reveal(to: cards.count)
+        }
+    }
+
+    private func reveal(to newCount: Int) async {
+        guard faceUpCount < newCount else {
+            faceUpCount = newCount
+            return
+        }
+        for index in faceUpCount..<newCount {
+            try? await Task.sleep(for: revealDelay)
+            guard !Task.isCancelled else { return }
+            GameHaptics.tick()
+            withAnimation(.easeInOut(duration: 0.35)) {
+                faceUpCount = index + 1
+            }
+        }
+        if faceUpCount == cards.count {
+            onFinishedRevealing?()
         }
     }
 }
