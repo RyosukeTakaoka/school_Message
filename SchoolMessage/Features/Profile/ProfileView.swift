@@ -93,6 +93,8 @@ struct ProfileView: View {
 
                 notificationSection
 
+                gameSection
+
                 legalSection
 
                 Section {
@@ -175,6 +177,18 @@ struct ProfileView: View {
             Text("通知")
         } footer: {
             Text("種類ごとに通知のオン・オフを選べます。メッセージの本文表示をオフにすると、ロック画面には送信者だけが表示されます。iPad を机に置いたままにすることが多い場合はオフをおすすめします。")
+        }
+    }
+
+    /// チンチロ・ブラックジャックなど, 対戦系のゲーム共通の設定.
+    private var gameSection: some View {
+        @Bindable var preferences = environment.gamePreferences
+        return Section {
+            Toggle(String(localized: "ゲーム中の振動"), isOn: $preferences.hapticsEnabled)
+        } header: {
+            Text("ゲーム")
+        } footer: {
+            Text("チンチロやブラックジャックなど、対戦中の振動(触覚フィードバック)のオン・オフをまとめて切り替えられます。")
         }
     }
 

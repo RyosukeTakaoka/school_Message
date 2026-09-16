@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-/// 競馬(平日 15:00 発走).
+/// 競馬(平日 15:05 発走).
 ///
 /// ## 他の遊びとの違い
 /// チャットの中の対戦は「参加者どうしの奪い合い」で, CHIP の総量は変わらない.
@@ -14,10 +14,15 @@ import CryptoKit
 /// - 期待値がマイナスなので, 競馬で CHIP を荒稼ぎすることはできない
 ///
 /// ## 結果とアニメーションがずれない作り
-/// 「先に着順を決めて, それらしいアニメを後から付ける」ことはしない.
-/// 種(`seed`)ひとつから**レースそのものを計算で再現**し(`HorseRaceRun`),
-/// 着順はその計算のゴール順をそのまま読む. 画面の馬は計算された位置に
-/// 置いているだけなので, 原理的にずれようがない.
+/// 種(`seed`)ひとつから**レースそのものを計算で再現**する(`HorseRaceRun`).
+/// 着順は能力の比で 1 着から順に引いて決まり, これはオッズを出すときと
+/// まったく同じ方法なので, オッズと勝ちやすさが食い違わない.
+///
+/// 画面の馬の位置は, その着順から作った「ゴールをくぐる時刻」だけを基準に
+/// している(`HorseRaceRun.position(of:at:)`). 時刻は 1 着から順に必ず後ろへ
+/// 積み上げるうえ, どの馬もその時刻より前には位置が 1.0(ゴール板)に届かない
+/// 式になっているため, 画面でゴール板をくぐる順番が着順とずれることは
+/// 原理的に起こらない.
 ///
 /// 同じ種なら, どの端末でも何度見返しても寸分違わず同じレースになる
 /// (色勝負や大富豪のカードを配るのに使っている `SeededGenerator` と同じ考え方).
@@ -43,14 +48,21 @@ enum HorseRaceRules {
 
     /// 発走時刻(時, 分).
     static let postHour = 15
-    static let postMinute = 0
+    static let postMinute = 5
 
     /// 締切時刻(時, 分). 発走の 10 分前.
     static let closingHour = 14
-    static let closingMinute = 50
+    static let closingMinute = 55
 
-    /// レースの演出にかける秒数.
-    static let runDuration: Double = 12
+    /// レースの演出にかける秒数. 最下位がゴールするまでの時間.
+    static let runDuration: Double = 16
+
+    /// 1 着から最下位までが飛び込んでくるのに使う幅(演出全体に対する割合).
+    ///
+    /// 1 着は `1 - finishSpread` の時点でゴールし, 最下位がちょうど終わりに入る.
+    /// 広げすぎると 1 着が決まったあとの待ち時間が長くなるので, 実際のレースと
+    /// 同じくらい(全体の 1 割強)に収めている.
+    static let finishSpread = 0.15
 
     /// 精算をさかのぼって確かめる日数.
     ///
@@ -120,7 +132,7 @@ enum HorseRaceSchedule {
         dateFormatter.date(from: raceID)
     }
 
-    /// 締切時刻(14:50).
+    /// 締切時刻(14:55).
     static func closingTime(raceID: String, calendar: Calendar = .current) -> Date? {
         guard let day = date(fromRaceID: raceID) else { return nil }
         return calendar.date(
@@ -131,7 +143,7 @@ enum HorseRaceSchedule {
         )
     }
 
-    /// 発走時刻(15:00).
+    /// 発走時刻(15:05).
     static func postTime(raceID: String, calendar: Calendar = .current) -> Date? {
         guard let day = date(fromRaceID: raceID) else { return nil }
         return calendar.date(
@@ -616,16 +628,22 @@ struct HorseRaceResult: Hashable, Sendable {
 
 /// 種から再現したレース 1 回ぶん.
 ///
-/// 着順は「決めたもの」ではなく, ここで計算した走りのゴール順を読んだもの.
-/// 画面はこの `position(of:at:)` の値をそのまま馬の位置に使うので,
-/// 見えている走りと着順が食い違うことはない.
+/// 着順は能力の比で 1 着から順に引いて決める(オッズを出すときとまったく同じ
+/// 方法なので, オッズと勝ちやすさが食い違わない). 画面の馬の位置は, その着順から
+/// 組み立てた「ゴールをくぐる時刻」を基準に計算する(`position(of:at:)`)ので,
+/// 見えているくぐり順と着順が食い違うことはない.
 struct HorseRaceRun: Hashable, Sendable {
 
     let card: HorseRaceCard
     /// 着順(1 着から最下位まで)の馬番.
     let finishingOrder: [Int]
-    /// 馬番ごとの, ゴール時点で進んだ距離(1 着が 1.0).
-    let finalDistances: [Int: Double]
+    /// 馬番ごとの, ゴール板をくぐる時刻(演出の進み具合 0〜1).
+    ///
+    /// **着順から直に組み立てる**. 1 着から順に「前の馬より必ず後」で積み上げて
+    /// いるので, 乱数がどう出ても前後が入れ替わらない. 「着差を決めてから
+    /// そこに掛かる時間を逆算する」作りにすると, 脚質(`paceExponents`)の違いで
+    /// 逆算した時刻の前後が入れ替わることがあり, 着順とゴールの瞬間がずれる.
+    let finishProgresses: [Int: Double]
     /// 馬番ごとの走りの形.
     let paceExponents: [Int: Double]
 
@@ -662,15 +680,24 @@ struct HorseRaceRun: Hashable, Sendable {
         }
         self.finishingOrder = order
 
-        // 着差. 1 着を 1.0 とし, 後ろほど少しずつ手前で終わる.
-        var distances: [Int: Double] = [:]
-        var covered = 1.0
-        for number in order {
-            distances[number] = covered
-            let gap = 0.006 + Double(generator.next() % 40) / 1000
-            covered -= gap
+        // ゴールをくぐる時刻. 着順どおりに間隔を積み上げてから, 最下位が
+        // ちょうど演出の終わり(1.0)に飛び込むよう全体を縮めて合わせる.
+        // 間隔は必ず正の値なので, この時点で着順どおりに並ぶことが保証される.
+        var offsets: [Double] = []
+        var cursor = 0.0
+        for index in order.indices {
+            if index > 0 {
+                cursor += 0.2 + Double(generator.next() % 80) / 100
+            }
+            offsets.append(cursor)
         }
-        self.finalDistances = distances
+        let span = offsets.last ?? 0
+        var finishes: [Int: Double] = [:]
+        for (index, number) in order.enumerated() {
+            let ratio = span > 0 ? offsets[index] / span : 1
+            finishes[number] = 1 - HorseRaceRules.finishSpread * (1 - ratio)
+        }
+        self.finishProgresses = finishes
 
         // 走りの形. 同じ脚質の馬が寸分違わず同じ動きをしないよう少しだけ散らす.
         var exponents: [Int: Double] = [:]
@@ -681,14 +708,20 @@ struct HorseRaceRun: Hashable, Sendable {
         self.paceExponents = exponents
     }
 
-    /// 進み具合(0 = スタート, 1 = 1 着のゴール地点)を返す.
+    /// 進み具合(0 = スタート, 1 = ゴール板)を返す.
+    ///
+    /// その馬がゴールする時刻(`finishProgresses`)でちょうど 1 になり, くぐった
+    /// あとはゴール板の位置で止まる. `(いまの時刻 / ゴールする時刻)` を底に
+    /// しているので, ゴールする時刻より前は底が 1 未満 = 何乗しても 1 に届かない.
+    /// つまり**自分の番より早くゴール板に触れることが式の上であり得ない**.
+    /// 脚質(`paceExponents`)は途中の膨らみ方だけを変え, ゴールの瞬間は動かさない.
     ///
     /// - Parameter progress: 演出の進み具合(0〜1).
     func position(of number: Int, at progress: Double) -> Double {
         let clamped = min(max(progress, 0), 1)
-        let distance = finalDistances[number] ?? 0
+        guard let finish = finishProgresses[number], finish > 0 else { return 0 }
         let exponent = paceExponents[number] ?? 1
-        return distance * pow(clamped, exponent)
+        return min(pow(clamped / finish, exponent), 1)
     }
 
     /// 何着か(1 から). 分からなければ nil.

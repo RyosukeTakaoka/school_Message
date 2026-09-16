@@ -15,6 +15,7 @@ final class AppEnvironment {
     let mediaLoader: MediaLoader
     let networkMonitor: NetworkMonitor
     let notificationPreferences: NotificationPreferences
+    let gamePreferences: GamePreferences
     let pushService: PushNotificationService
     let consent: ConsentStore
     let streetPass: StreetPassStore
@@ -26,6 +27,7 @@ final class AppEnvironment {
         mediaLoader: MediaLoader,
         networkMonitor: NetworkMonitor,
         notificationPreferences: NotificationPreferences,
+        gamePreferences: GamePreferences,
         pushService: PushNotificationService,
         consent: ConsentStore,
         streetPass: StreetPassStore,
@@ -36,6 +38,7 @@ final class AppEnvironment {
         self.mediaLoader = mediaLoader
         self.networkMonitor = networkMonitor
         self.notificationPreferences = notificationPreferences
+        self.gamePreferences = gamePreferences
         self.pushService = pushService
         self.consent = consent
         self.streetPass = streetPass
@@ -83,6 +86,7 @@ final class AppEnvironment {
             mediaLoader: MediaLoader(backend: backend),
             networkMonitor: networkMonitor,
             notificationPreferences: preferences,
+            gamePreferences: GamePreferences(),
             pushService: PushNotificationService(preferences: preferences),
             consent: ConsentStore(),
             streetPass: StreetPassStore(),
