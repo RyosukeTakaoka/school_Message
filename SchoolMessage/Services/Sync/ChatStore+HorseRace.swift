@@ -8,6 +8,12 @@ struct HorseRaceState: Sendable {
     var phase: HorseRaceSchedule.Phase
     /// 自分が買った馬券.
     var myBets: [HorseRaceBet]
+    /// 締切後に名前付きで公開する, 全員ぶんの馬券.
+    ///
+    /// 受付中は空のまま. 締切前に他人の予想が見えると, 人気馬に乗るだけの
+    /// 買い方ができてしまい, 出走表を読む意味が無くなるため
+    /// (画面に渡さないことで, 誤って出してしまう余地も無くしている).
+    var publicBets: [HorseRaceBet] = []
     /// このレースに入っている馬券の総数(自分以外も含む).
     var totalBetCount: Int
     /// 種が確定していれば, 再現したレース.
@@ -54,6 +60,18 @@ extension ChatStore {
         state.totalBetCount = bets.count
         if let me = currentUserID {
             state.myBets = bets.filter { $0.bettorID == me }
+        }
+        switch phase {
+        case .betting:
+            break
+        case .closed, .finished:
+            state.publicBets = bets
+            // 名前を出すために, まだ持っていないプロフィールをまとめて取る
+            // (競馬は友達に限らず誰でも買うので, 手元に無いことがある).
+            let missing = Set(bets.map(\.bettorID)).subtracting(profilesByID.keys)
+            if !missing.isEmpty, let profiles = try? await backend.fetchProfiles(ids: Array(missing)) {
+                for profile in profiles { profilesByID[profile.id] = profile }
+            }
         }
 
         // 発走前なら, ここまで(結果はまだ無い).
