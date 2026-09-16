@@ -12,6 +12,10 @@ struct IndianPokerGameView: View {
     @State private var isSending = false
     @State private var opponentCard: PlayingCard?
     @State private var settledDelta: Int?
+    /// 決着してから, 自分のカードを実際にめくるまでの「溜め」を作るための状態.
+    @State private var isMyCardRevealed = false
+    @State private var isOpponentCardPulsing = false
+    @State private var revealTask: Task<Void, Never>?
 
     private var store: ChatStore { environment.store }
     private var me: UserID? { store.currentUserID }
@@ -59,6 +63,29 @@ struct IndianPokerGameView: View {
             if snapshot.isFinished {
                 settledDelta = await store.settleChipsIfNeeded(for: .indianPoker(snapshot))
                     ?? snapshot.chipDeltas[me]
+
+                // 自分のカードが公開対象なら(降りていなければ), 少し溜めてからめくる.
+                // 相手のカードはもう見えているので, 最後まで隠すのは自分の分だけ.
+                if !isMyCardRevealed, revealTask == nil, snapshot.revealedCard(of: me) != nil {
+                    revealTask = Task {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                            isOpponentCardPulsing = true
+                        }
+                        GameHaptics.tick()
+                        try? await Task.sleep(for: .milliseconds(900))
+                        withAnimation(.easeInOut(duration: 0.4)) {
+                            isMyCardRevealed = true
+                            isOpponentCardPulsing = false
+                        }
+                        if let winnerID = snapshot.winnerID {
+                            GameHaptics.result(didWin: winnerID == me)
+                        }
+                    }
+                }
+            } else {
+                isMyCardRevealed = false
+                revealTask?.cancel()
+                revealTask = nil
             }
         }
     }
@@ -85,33 +112,35 @@ struct IndianPokerGameView: View {
                     ChipBalanceBadge(compact: true)
                 }
 
-                // 相手のカード(自分には見えている).
+                // 相手のカード(自分には見えている). 自分のカードをめくる直前,
+                // 「相手はもう分かっている」ことを強調するために少し脈打たせる.
                 VStack(spacing: 6) {
                     Text(opponentName(snapshot) + "のカード")
                         .font(.caption)
                         .foregroundStyle(Palette.subdued)
                     if let opponentCard {
                         PlayingCardView(card: opponentCard, size: .large)
+                            .scaleEffect(isOpponentCardPulsing ? 1.08 : 1)
                     } else {
-                        hiddenCard(label: "?")
+                        CardBackView(size: .large)
                     }
                 }
 
-                // 自分のカード(決着するまで伏せたまま).
+                // 自分のカード(決着してもすぐには見せず, 少し溜めてからめくる).
                 VStack(spacing: 6) {
                     Text("あなたのカード")
                         .font(.caption)
                         .foregroundStyle(Palette.subdued)
                     if let myCard = me.flatMap({ snapshot.revealedCard(of: $0) }) {
-                        PlayingCardView(card: myCard, size: .large)
+                        FlippableCardView(card: myCard, size: .large, isFaceUp: isMyCardRevealed)
                     } else {
-                        hiddenCard(label: "?")
+                        CardBackView(size: .large)
                     }
                 }
 
                 statusText(snapshot, myAction: myAction)
 
-                if snapshot.isFinished {
+                if canShowResult(snapshot) {
                     resultView(snapshot)
                 } else if myAction == nil, me.map({ snapshot.isPlayer($0) }) == true {
                     HStack(spacing: AppConstants.Layout.standardSpacing) {
@@ -133,12 +162,12 @@ struct IndianPokerGameView: View {
         }
     }
 
-    private func hiddenCard(label: String) -> some View {
-        Text(label)
-            .font(.largeTitle.weight(.bold))
-            .foregroundStyle(Palette.subdued)
-            .frame(width: 58, height: 80)
-            .background(Palette.incomingBubble, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    /// 決着していて, かつ(自分のカードをめくる演出があるなら)それも終わっているか.
+    /// 降りていて自分のカードがそもそも公開されない対戦は, 決着と同時に見せてよい.
+    private func canShowResult(_ snapshot: IndianPokerSnapshot) -> Bool {
+        guard snapshot.isFinished else { return false }
+        guard me.flatMap({ snapshot.revealedCard(of: $0) }) != nil else { return true }
+        return isMyCardRevealed
     }
 
     private func opponentName(_ snapshot: IndianPokerSnapshot) -> String {
@@ -150,16 +179,21 @@ struct IndianPokerGameView: View {
 
     @ViewBuilder
     private func statusText(_ snapshot: IndianPokerSnapshot, myAction: IndianPokerSnapshot.Action?) -> some View {
-        if snapshot.isFinished {
+        if snapshot.isFinished, !canShowResult(snapshot) {
+            Label(String(localized: "結果を確かめています…"), systemImage: "hourglass")
+                .font(.footnote)
+                .foregroundStyle(Palette.subdued)
+        } else if snapshot.isFinished {
             EmptyView()
         } else if snapshot.isAwaitingReveal {
             Label(String(localized: "見せ合っています…"), systemImage: "hourglass")
                 .font(.footnote)
                 .foregroundStyle(Palette.subdued)
         } else if myAction != nil {
-            Text("相手を待っています…")
+            Label(String(localized: "選択しました。相手を待っています…"), systemImage: "lock.fill")
                 .font(.footnote)
                 .foregroundStyle(Palette.subdued)
+                .transition(.opacity)
         } else {
             Text("勝負するか、降りるかを選んでください")
                 .font(.subheadline.weight(.semibold))

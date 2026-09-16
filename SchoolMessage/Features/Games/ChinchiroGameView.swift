@@ -13,7 +13,14 @@ struct ChinchiroGameView: View {
     @State private var isSending = false
     @State private var isSpinning = false
     @State private var displayDice = [1, 2, 3]
+    /// 決まった目だけここに入る. nil のままの目は, 決まるまで高速に切り替わり続ける.
+    @State private var lockedDice: [Int?] = [nil, nil, nil]
+    /// 左から何個決まったか(表示のハイライトに使う).
+    @State private var settledDiceCount = 0
+    /// STOP を押してから, 目が全部決まって役が見えるまでの「溜め」の間 true.
+    @State private var isRevealingResult = false
     @State private var spinTask: Task<Void, Never>?
+    @State private var revealTask: Task<Void, Never>?
     @State private var settledDelta: Int?
 
     private var store: ChatStore { environment.store }
@@ -59,6 +66,7 @@ struct ChinchiroGameView: View {
         }
         .onDisappear {
             spinTask?.cancel()
+            revealTask?.cancel()
             isSpinning = false
         }
     }
@@ -85,16 +93,25 @@ struct ChinchiroGameView: View {
                     ChipBalanceBadge(compact: true)
                 }
 
-                diceRow(myRoll?.dice ?? displayDice)
+                diceRow(
+                    isRevealingResult ? displayDice : (myRoll?.dice ?? displayDice),
+                    settledCount: isRevealingResult ? settledDiceCount : nil
+                )
 
-                if let myRoll {
+                if let myRoll, !isRevealingResult {
                     VStack(spacing: 6) {
                         Text(myRoll.hand.title)
                             .font(.title3.weight(.bold))
+                            .transition(.scale.combined(with: .opacity))
                         if let delta = settledDelta ?? me.flatMap({ snapshot.chipDeltas[$0] }) {
                             ChipResultBanner(delta: delta)
                         }
                     }
+                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: isRevealingResult)
+                } else if isRevealingResult {
+                    Label(String(localized: "目を確かめています…"), systemImage: "hourglass")
+                        .font(.footnote)
+                        .foregroundStyle(Palette.subdued)
                 } else if me.map({ snapshot.playerIDs.contains($0) }) == true {
                     Button {
                         stopSpinning()
@@ -113,7 +130,7 @@ struct ChinchiroGameView: View {
                         .foregroundStyle(Palette.subdued)
                 }
 
-                if snapshot.isFinished {
+                if snapshot.isFinished, !isRevealingResult {
                     resultLine(snapshot)
                 }
 
@@ -156,18 +173,26 @@ struct ChinchiroGameView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func diceRow(_ dice: [Int]) -> some View {
+    /// `settledCount` を渡すと, 左から何個が「決まった目」かを見た目で区別する
+    /// (決まっていない目は, 高速に切り替わっている最中でも同じ枠で表示され続ける).
+    private func diceRow(_ dice: [Int], settledCount: Int? = nil) -> some View {
         HStack(spacing: 12) {
-            ForEach(Array(dice.enumerated()), id: \.offset) { _, value in
+            ForEach(Array(dice.enumerated()), id: \.offset) { index, value in
+                let isSettled = settledCount.map { index < $0 } ?? true
                 Text("\(value)")
                     .font(.system(size: 40, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .frame(width: 72, height: 72)
-                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(
+                        isSettled ? Color.accentColor.opacity(0.16) : Color(uiColor: .secondarySystemBackground),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
                     .overlay {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(isSettled ? Color.accentColor : Color.black.opacity(0.12), lineWidth: isSettled ? 2 : 1)
                     }
+                    .scaleEffect(isSettled ? 1 : 0.94)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSettled)
             }
         }
         .padding(.vertical, 8)
@@ -184,7 +209,9 @@ struct ChinchiroGameView: View {
                     Text(store.displayName(for: playerID))
                         .font(.subheadline)
                     Spacer()
-                    if let roll = snapshot.round?.rolls[playerID] {
+                    // 自分の分は, 画面上の演出が終わるまでここにも先に出さない
+                    // (先に出すと, 上のダイスが決まる前に結果が分かってしまう).
+                    if let roll = snapshot.round?.rolls[playerID], !(playerID == me && isRevealingResult) {
                         Text(roll.dice.map(String.init).joined(separator: " "))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(Palette.subdued)
@@ -196,7 +223,7 @@ struct ChinchiroGameView: View {
                                 .foregroundStyle(delta > 0 ? .green : (delta < 0 ? Palette.failure : Palette.subdued))
                         }
                     } else {
-                        Text("まだ振っていません")
+                        Text(playerID == me && isRevealingResult ? "確認中…" : "まだ振っていません")
                             .font(.caption)
                             .foregroundStyle(Palette.subdued)
                     }
@@ -210,20 +237,45 @@ struct ChinchiroGameView: View {
     private func startSpinning() {
         spinTask?.cancel()
         isSpinning = true
+        lockedDice = [nil, nil, nil]
+        settledDiceCount = 0
         spinTask = Task {
             while !Task.isCancelled {
-                displayDice = (0..<3).map { _ in Int.random(in: 1...6) }
+                // 決まった目はそのまま, まだの目だけ高速に切り替え続ける.
+                displayDice = (0..<3).map { index in lockedDice[index] ?? Int.random(in: 1...6) }
                 try? await Task.sleep(for: .milliseconds(70))
             }
         }
     }
 
+    /// STOP が押された瞬間に出目は全部決まるが, 見せ方は左から順に
+    /// 1 個ずつ「決まった感じ」を出してから, 最後に役を見せる.
     private func stopSpinning() {
+        guard !isRevealingResult else { return }
+        let roll = ChinchiroRoll.roll()
+        run { await store.rollChinchiro(roll, in: conversationID) }
+
+        revealTask?.cancel()
+        revealTask = Task { await revealSequentially(roll) }
+    }
+
+    private func revealSequentially(_ roll: ChinchiroRoll) async {
+        isRevealingResult = true
+        for index in roll.dice.indices {
+            try? await Task.sleep(for: .milliseconds(380))
+            GameHaptics.tick()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) {
+                lockedDice[index] = roll.dice[index]
+                settledDiceCount = index + 1
+            }
+        }
+        // 3つ揃ってから, 役が分かるまでもう一呼吸だけ間を置く.
+        try? await Task.sleep(for: .milliseconds(350))
         spinTask?.cancel()
         isSpinning = false
-        let roll = ChinchiroRoll.roll()
         displayDice = roll.dice
-        run { await store.rollChinchiro(roll, in: conversationID) }
+        GameHaptics.result(didWin: roll.hand.strength >= ChinchiroHand.shigoro.strength)
+        isRevealingResult = false
     }
 
     private func run(_ operation: @escaping () async -> Void) {

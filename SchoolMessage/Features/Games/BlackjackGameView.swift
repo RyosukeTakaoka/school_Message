@@ -52,6 +52,9 @@ struct BlackjackGameView: View {
             guard let snapshot, snapshot.isFinished, let me else { return }
             settledDelta = await store.settleChipsIfNeeded(for: .blackjack(snapshot))
                 ?? snapshot.chipDeltas[me]
+            if let outcome = snapshot.outcome(for: me) {
+                GameHaptics.result(didWin: outcome == .win)
+            }
         }
     }
 
@@ -202,12 +205,10 @@ struct BlackjackGameView: View {
         }
     }
 
+    /// もとから配られている札はそのまま出すが, HIT で増えた札だけ
+    /// 裏向きで一瞬止めてからめくる(`RevealingCardRow` 参照).
     private func cardRow(_ cards: [PlayingCard]) -> some View {
-        HStack(spacing: 6) {
-            ForEach(Array(cards.enumerated()), id: \.offset) { _, card in
-                PlayingCardView(card: card, size: .small)
-            }
-        }
+        RevealingCardRow(cards: cards, size: .small)
     }
 
     private func run(_ operation: @escaping () async -> Void) {
