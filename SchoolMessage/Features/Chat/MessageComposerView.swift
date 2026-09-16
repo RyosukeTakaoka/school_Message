@@ -535,6 +535,24 @@ struct ComposerTextView: UIViewRepresentable {
         Coordinator(self)
     }
 
+    /// この `UIViewRepresentable` の幅・高さを SwiftUI に伝える.
+    ///
+    /// これを実装しないと, SwiftUI は内部の `UITextView` に「制約無しでの
+    /// 理想の大きさ」を尋ねる. 改行できる隙間の無い長い文字列(スペースの
+    /// 無い連続した文字など)を打つと, `UITextView` は折り返さずに 1 行で
+    /// 収まる幅を答えてしまい, その結果 `HStack` 全体が画面の外まで
+    /// 広がって送信ボタンが押せなくなっていた.
+    ///
+    /// ここで `proposal`(親の `HStack` が実際に割り当てようとしている幅)
+    /// をそのまま使って高さを計算し直すことで, 「渡された幅の中で折り返す」
+    /// 動きに固定できる. 幅は要求せず, 高さだけ変えて返す.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+        let fitting = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        let clampedHeight = min(max(fitting.height, minHeight), maxHeight)
+        return CGSize(width: width, height: clampedHeight)
+    }
+
     /// 1〜5 行ぶんの高さの範囲で伸び縮みさせる. それを超えたら中で
     /// スクロールする(それ以上ふくらませない).
     private func recalculateHeight(_ textView: UITextView) {
