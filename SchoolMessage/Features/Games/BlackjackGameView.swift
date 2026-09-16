@@ -12,6 +12,9 @@ struct BlackjackGameView: View {
 
     @State private var isSending = false
     @State private var settledDelta: Int?
+    /// HIT で引いた札がめくり終わるまで, バーストや結果の文字は隠しておく
+    /// (めくり演出より先に結果だけ見えてしまうと, めくる意味が無くなる).
+    @State private var isMyHandFullyRevealed = true
 
     private var store: ChatStore { environment.store }
     private var me: UserID? { store.currentUserID }
@@ -125,15 +128,15 @@ struct BlackjackGameView: View {
                     .font(.headline.monospacedDigit())
                     .foregroundStyle(state.isBust ? Palette.failure : Color.primary)
             }
-            cardRow(state.cards)
+            cardRow(state.cards) { isMyHandFullyRevealed = true }
 
-            if state.isBust {
+            if state.isBust, isMyHandFullyRevealed {
                 Text("バーストしました")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.failure)
             }
 
-            if snapshot.isFinished {
+            if snapshot.isFinished, isMyHandFullyRevealed {
                 if let outcome = me.flatMap({ snapshot.outcome(for: $0) }) {
                     HStack(spacing: AppConstants.Layout.standardSpacing) {
                         Text(outcome.title)
@@ -146,6 +149,10 @@ struct BlackjackGameView: View {
                 ChipGameRematchSection(kind: .blackjack, previousBet: round.bet, isSending: isSending) { bet in
                     run { await store.createBlackjackLobby(bet: bet, in: conversationID) }
                 }
+            } else if snapshot.isFinished {
+                Label(String(localized: "結果を確かめています…"), systemImage: "hourglass")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.subdued)
             } else if let me, snapshot.canAct(me) {
                 HStack(spacing: AppConstants.Layout.standardSpacing) {
                     Button(String(localized: "HIT")) {
@@ -165,6 +172,9 @@ struct BlackjackGameView: View {
                     .font(.footnote)
                     .foregroundStyle(Palette.subdued)
             }
+        }
+        .onChange(of: state.cards.count) { oldValue, newValue in
+            if newValue > oldValue { isMyHandFullyRevealed = false }
         }
     }
 
@@ -207,8 +217,8 @@ struct BlackjackGameView: View {
 
     /// もとから配られている札はそのまま出すが, HIT で増えた札だけ
     /// 裏向きで一瞬止めてからめくる(`RevealingCardRow` 参照).
-    private func cardRow(_ cards: [PlayingCard]) -> some View {
-        RevealingCardRow(cards: cards, size: .small)
+    private func cardRow(_ cards: [PlayingCard], onFinishedRevealing: (() -> Void)? = nil) -> some View {
+        RevealingCardRow(cards: cards, size: .small, onFinishedRevealing: onFinishedRevealing)
     }
 
     private func run(_ operation: @escaping () async -> Void) {
