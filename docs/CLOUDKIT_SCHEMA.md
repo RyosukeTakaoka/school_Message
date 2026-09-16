@@ -217,6 +217,44 @@ recordName: クライアントが採番した UUID
 > 写真の 5 フィールド（`imageAsset` 以下）は, 書き込みに添付したときだけ
 > 値が入る。文章だけの書き込みでは触れないので, 未設定のままで構わない。
 
+## HorseRaceBet / HorseRaceResult
+
+競馬（平日 15:00 発走）の馬券と、レース結果の確定レコード。
+
+出走表（9 頭の馬名・脚質・調子・オッズ）はレコードに持たない。開催日から
+決まる種でどの端末でも同じ表を組み立てられるため、保存する必要がない。
+
+### HorseRaceBet
+
+| フィールド | 型 | インデックス | 用途 |
+|---|---|---|---|
+| `raceID` | String | QUERYABLE | 開催日（`2026-09-16`） |
+| `bettorID` | String | QUERYABLE | 買った人（`creatorUserRecordID` と突き合わせて検証） |
+| `kind` | String | QUERYABLE | 券種（`win` / `place` / `quinella` / `exacta` / `wide` / `trio` / `trifecta`） |
+| `selections` | Int(64) (List) | — | 選んだ馬番。券種によって 1〜3 個 |
+| `amount` | Int(64) | — | 賭けた CHIP |
+| `createdAt` | Date/Time | QUERYABLE, SORTABLE | 締切（14:50）より前のものだけ有効 |
+
+recordName: クライアントが採番した UUID
+
+### HorseRaceResult
+
+レースの種を確定させる 1 件。**recordName を `race-<開催日>` に固定**しているため、
+複数の端末が同時に作ろうとしてもサーバ側で 1 件しか作れない（2 件目は
+「既にある」で弾かれ、既存のものを読みに行く）。これで全員が必ず同じ種を見る。
+
+| フィールド | 型 | インデックス | 用途 |
+|---|---|---|---|
+| `raceID` | String | QUERYABLE | 開催日 |
+| `seed` | String | — | レースを再現する種 |
+| `betIDs` | String (List) | — | 種の計算に入れた馬券。各端末が検算できるようにするため |
+| `lockedAt` | Date/Time | QUERYABLE, SORTABLE | 確定した時刻 |
+
+recordName: `race-<開催日>`（例: `race-2026-09-16`）
+
+> 種は「締切時点で出そろった馬券の内容と、CloudKit がサーバ側で打刻した作成時刻」
+> から計算する。作成時刻はクライアントが選べないので、誰も狙った結果を作れない。
+
 ---
 
 ## セキュリティロール
