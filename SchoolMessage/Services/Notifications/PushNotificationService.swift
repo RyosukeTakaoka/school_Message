@@ -78,6 +78,9 @@ final class PushNotificationService: NSObject {
         var deviceToken: DeviceTokenState
         var serverSubscriptionIDs: [String]
         var subscriptionLookupError: String?
+        /// 診断した時点で「掲示板」の通知をオンにしていたか.
+        /// オフの人には購読が無くて当然なので, 判定の対象から外すために持つ.
+        var isBoardNotificationEnabled: Bool
 
         /// 新着メッセージの購読がサーバ上に存在するか.
         ///
@@ -93,11 +96,18 @@ final class PushNotificationService: NSObject {
             serverSubscriptionIDs.contains(where: CKSchema.SubscriptionID.isPerConversation)
         }
 
+        /// 掲示板の購読がサーバ上に存在するか. オフにしている間は
+        /// 無くて正常なので, その場合は true(問題なし)を返す.
+        var hasBoardSubscriptionIfNeeded: Bool {
+            !isBoardNotificationEnabled || serverSubscriptionIDs.contains(CKSchema.SubscriptionID.newBoardPosts)
+        }
+
         /// すべての段階を通過しているか.
         var isHealthy: Bool {
             authorization == .authorized
                 && deviceToken.isRegistered
                 && hasMessageSubscription
+                && hasBoardSubscriptionIfNeeded
         }
     }
 
@@ -117,7 +127,8 @@ final class PushNotificationService: NSObject {
             authorization: status,
             deviceToken: deviceTokenState,
             serverSubscriptionIDs: subscriptionIDs,
-            subscriptionLookupError: lookupError
+            subscriptionLookupError: lookupError,
+            isBoardNotificationEnabled: preferences.boardEnabled
         )
     }
 
@@ -181,7 +192,12 @@ final class PushNotificationService: NSObject {
 
     /// 設定画面で「掲示板」の通知トグルを切り替えたときに呼ぶ.
     /// トグルの状態はここで保存し, サーバ側の購読の作成・削除も同時に行う.
+    ///
+    /// サーバ側が失敗したときはトグルを元に戻す.
+    /// 以前は失敗してもトグルだけオンのまま残っていたため, 「オンにしたのに
+    /// 通知が来ない」という, 本人には気付きようのない状態になっていた.
     func setBoardNotificationsEnabled(_ enabled: Bool) async {
+        let previous = preferences.boardEnabled
         preferences.boardEnabled = enabled
         guard let store, store.phase == .ready else { return }
         do {
@@ -191,6 +207,8 @@ final class PushNotificationService: NSObject {
                 try await store.backend.removeBoardSubscription()
             }
         } catch {
+            preferences.boardEnabled = previous
+            store.banner = AppError.wrap(error)
             Log.push.notice(
                 "failed to update board subscription: \(AppError.wrap(error).localizedDescription, privacy: .public)"
             )

@@ -213,11 +213,24 @@ struct ProfileView: View {
                 detail: subscriptionDetail(diagnostics)
             )
 
+            // 掲示板をオンにしている人だけ, 専用の購読があるかも確かめる.
+            // メッセージの購読とは別物なので, 3 が○でもこちらが×のことがある.
+            if diagnostics.isBoardNotificationEnabled {
+                diagnosticRow(
+                    String(localized: "4. 掲示板の購読"),
+                    ok: diagnostics.hasBoardSubscriptionIfNeeded,
+                    detail: diagnostics.hasBoardSubscriptionIfNeeded
+                        ? String(localized: "掲示板の購読があります")
+                        : String(localized: "掲示板の購読がサーバにありません。下のボタンで作り直してください")
+                )
+            }
+
             if !diagnostics.isHealthy {
                 Button(String(localized: "購読をもう一度設定する")) {
                     Task {
                         isRetryingSubscription = true
                         await store.configurePushSubscriptions()
+                        await environment.pushService.configureBoardSubscriptionIfNeeded()
                         await runDiagnostics()
                         isRetryingSubscription = false
                     }
