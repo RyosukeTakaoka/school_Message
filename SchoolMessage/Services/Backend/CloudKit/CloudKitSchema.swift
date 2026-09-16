@@ -296,6 +296,24 @@ enum CKSchema {
         static let lockedAt = "lockedAt"        // QUERYABLE, SORTABLE
     }
 
+    // MARK: - アプリの更新
+
+    /// 「これ未満のビルドでは遊べない」下限を配る 1 件だけのレコード.
+    ///
+    /// recordName を決め打ちにしてあるので, クエリではなく ID 直指定で読む
+    /// (クエリ用のインデックスを作らずに済む). 値を変えるのは CloudKit Console
+    /// からで, アプリを配り直さずに下限を上げられる.
+    enum AppRelease {
+        static let recordType = "AppRelease"
+        /// このレコードタイプで唯一の recordName.
+        static let recordName = "minimum-build"
+
+        /// 必要な最小のビルド番号(`202609161222` のような数値).
+        static let minimumBuild = "minimumBuild"
+        /// 更新をお願いする理由. 画面にそのまま出す(空でもよい).
+        static let message = "message"
+    }
+
     // MARK: - Subscription
 
     enum SubscriptionID {

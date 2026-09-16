@@ -198,6 +198,11 @@ protocol ChatBackend: Sendable {
     /// (recordName を開催日から決め打ちにしているため, 2 件目は作れない).
     func lockHorseRaceResult(raceID: String, bets: [HorseRaceBet]) async throws -> HorseRaceResult
 
+    // MARK: アプリの更新
+
+    /// 「これ未満のビルドでは遊べない」下限を取る. 決めていなければ nil.
+    func fetchRequiredRelease() async throws -> RequiredRelease?
+
     // MARK: メディア
 
     /// 添付の本体を復号してローカルにダウンロードし, その URL を返す.

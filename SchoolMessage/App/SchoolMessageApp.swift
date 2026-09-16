@@ -41,6 +41,8 @@ struct SchoolMessageApp: App {
                 // 復帰時に取りこぼした新着を取り込み, 送信待ちを流す.
                 environment.store.handleForeground()
                 environment.streetPass.handleForeground()
+                // アプリを開きっぱなしの人にも, 下限が上がったことが届くようにする.
+                Task { await environment.updateGate.refresh(using: environment.backend) }
             case .background:
                 Task { await environment.pushService.updateBadge() }
             default:
@@ -57,6 +59,10 @@ struct SchoolMessageApp: App {
     /// 呼び直される.
     private func startIfConsented() async {
         guard !AppConstants.Legal.requiresConsent || environment.consent.hasAgreedToCurrentVersion else { return }
+        // 古いビルドを使い続けている人に更新してもらうための確認.
+        // 圏外だと再試行で時間がかかることがあるので, 起動を待たせず並行して行う
+        // (読めなければ何も起きない. `AppUpdateGate` 参照).
+        Task { await environment.updateGate.refresh(using: environment.backend) }
         // サイレント通知でアプリを起こせるようにするための登録.
         // 許可のダイアログは出ない(許可を求めるのは最初のチャットを開いたとき).
         environment.pushService.registerForRemoteNotifications()

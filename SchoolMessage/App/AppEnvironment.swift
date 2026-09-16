@@ -16,6 +16,7 @@ final class AppEnvironment {
     let networkMonitor: NetworkMonitor
     let notificationPreferences: NotificationPreferences
     let gamePreferences: GamePreferences
+    let updateGate: AppUpdateGate
     let pushService: PushNotificationService
     let consent: ConsentStore
     let streetPass: StreetPassStore
@@ -28,6 +29,7 @@ final class AppEnvironment {
         networkMonitor: NetworkMonitor,
         notificationPreferences: NotificationPreferences,
         gamePreferences: GamePreferences,
+        updateGate: AppUpdateGate,
         pushService: PushNotificationService,
         consent: ConsentStore,
         streetPass: StreetPassStore,
@@ -39,6 +41,7 @@ final class AppEnvironment {
         self.networkMonitor = networkMonitor
         self.notificationPreferences = notificationPreferences
         self.gamePreferences = gamePreferences
+        self.updateGate = updateGate
         self.pushService = pushService
         self.consent = consent
         self.streetPass = streetPass
@@ -87,6 +90,7 @@ final class AppEnvironment {
             networkMonitor: networkMonitor,
             notificationPreferences: preferences,
             gamePreferences: GamePreferences(),
+            updateGate: AppUpdateGate(),
             pushService: PushNotificationService(preferences: preferences),
             consent: ConsentStore(),
             streetPass: StreetPassStore(),
