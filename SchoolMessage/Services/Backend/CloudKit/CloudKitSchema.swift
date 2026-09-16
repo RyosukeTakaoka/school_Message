@@ -303,6 +303,12 @@ enum CKSchema {
     /// recordName を決め打ちにしてあるので, クエリではなく ID 直指定で読む
     /// (クエリ用のインデックスを作らずに済む). 値を変えるのは CloudKit Console
     /// からで, アプリを配り直さずに下限を上げられる.
+    ///
+    /// このレコードタイプだけ, スキーマ上 `_icloud` に CREATE 権限を与えていない
+    /// (`docs/cloudkit-schema.ckdb` 参照). 与えてしまうと, 管理者がまだ作って
+    /// いない `minimum-build` を先にアプリの利用者が作れてしまい, 「作った本人
+    /// にしか書き込めない」という既定ルールで以後だれも書き換えられなくなる
+    /// 恐れがあるため. アプリはここから先, 読むだけしか行わない.
     enum AppRelease {
         static let recordType = "AppRelease"
         /// このレコードタイプで唯一の recordName.

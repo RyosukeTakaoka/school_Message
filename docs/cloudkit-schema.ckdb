@@ -1,5 +1,18 @@
 DEFINE SCHEMA
 
+    RECORD TYPE AppRelease (
+        "___createTime" TIMESTAMP,
+        "___createdBy"  REFERENCE,
+        "___etag"       STRING,
+        "___modTime"    TIMESTAMP,
+        "___modifiedBy" REFERENCE,
+        "___recordID"   REFERENCE,
+        message         STRING,
+        minimumBuild    INT64,
+        GRANT WRITE TO "_creator",
+        GRANT READ TO "_world"
+    );
+
     RECORD TYPE BoardPost (
         "___createTime" TIMESTAMP,
         "___createdBy"  REFERENCE,
