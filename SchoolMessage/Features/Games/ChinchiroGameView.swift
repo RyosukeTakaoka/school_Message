@@ -269,8 +269,6 @@ struct ChinchiroGameView: View {
                 settledDiceCount = index + 1
             }
         }
-        // 3つ揃ってから, 役が分かるまでもう一呼吸だけ間を置く.
-        try? await Task.sleep(for: .milliseconds(350))
         spinTask?.cancel()
         isSpinning = false
         displayDice = roll.dice
