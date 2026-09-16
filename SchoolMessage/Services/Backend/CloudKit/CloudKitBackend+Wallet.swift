@@ -119,6 +119,33 @@ extension CloudKitBackend {
         return Array(entries.prefix(limit))
     }
 
+    func fetchWalletBalances(ownerIDs: [UserID]) async throws -> [UserID: Int] {
+        guard !ownerIDs.isEmpty else { return [:] }
+        let me = try await currentUserID()
+
+        let query = CKQuery(
+            recordType: CKSchema.PlayerWallet.recordType,
+            predicate: NSPredicate(format: "%K IN %@", CKSchema.PlayerWallet.ownerID, ownerIDs.map(\.rawValue))
+        )
+        let records = try await queryWithRetry(
+            query,
+            desiredKeys: [CKSchema.PlayerWallet.ownerID, CKSchema.PlayerWallet.balance],
+            limit: max(ownerIDs.count, 1)
+        )
+
+        var balances: [UserID: Int] = [:]
+        for record in records {
+            guard let ownerRaw = record[CKSchema.PlayerWallet.ownerID] as? String else { continue }
+            // なりすまし対策. 他人ぶんの財布を勝手に作られても読まない.
+            guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == ownerRaw else {
+                Log.backend.notice("ignoring wallet with mismatched creator")
+                continue
+            }
+            balances[UserID(ownerRaw)] = record[CKSchema.PlayerWallet.balance] as? Int ?? 0
+        }
+        return balances
+    }
+
     /// ランキングを組み立てるときに, 1 度に取ってくるレコード数の上限.
     private static var rankingFetchLimit: Int { 200 }
 

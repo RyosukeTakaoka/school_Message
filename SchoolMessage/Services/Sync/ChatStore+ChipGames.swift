@@ -114,6 +114,38 @@ extension ChatStore {
         return true
     }
 
+    /// 参加者全員が賭け金を払えるかを, 対戦を始める直前に確かめる.
+    ///
+    /// ## なぜ始める直前にもう一度見るのか
+    /// 賭けられるかどうかは募集に参加した時点でも確かめている(`assertCanBet`)が,
+    /// そのあと別のチャットの対戦で CHIP が減ることがある. 払えない人が混ざったまま
+    /// 始めてしまうと, 精算のときに**負けた人の残高は 0 で止まる**のに
+    /// (`PlayerWallet.applying` は残高を 0 未満にしない)**勝った人は満額受け取る**ため,
+    /// 差額の CHIP が無から生まれてしまう.
+    ///
+    /// 掛け持ちで何人もの相手に同時に負けると, 負けた人は持っている分しか減らないのに
+    /// 勝った人それぞれが満額もらえるので, ここを見ないと CHIP を増やす手口になる.
+    private func assertEveryoneCanPay(_ playerIDs: [UserID], bet: Int) async -> Bool {
+        let balances: [UserID: Int]
+        do {
+            balances = try await backend.fetchWalletBalances(ownerIDs: playerIDs)
+        } catch {
+            banner = AppError.wrap(error)
+            return false
+        }
+
+        // 見つからない人は, まだ一度も CHIP を触っていない(財布のレコードが
+        // 作られていない)人なので, 初期値を持っているものとして扱う.
+        // ここを 0 扱いにすると, 初めて遊ぶ人が対戦を始められなくなってしまう.
+        let shortIDs = playerIDs.filter { (balances[$0] ?? PlayerWallet.initialBalance) < bet }
+        guard shortIDs.isEmpty else {
+            let names = shortIDs.map { displayName(for: $0) }.joined(separator: "、")
+            banner = .underlying(String(localized: "\(names) の CHIP が足りないため始められません"))
+            return false
+        }
+        return true
+    }
+
     /// 参加者全員の公開鍵. 1 人でも欠けていれば nil(暗号化して配れないため).
     private func publicKeys(for playerIDs: [UserID]) -> [UserID: Data]? {
         var keys: [UserID: Data] = [:]
@@ -157,6 +189,7 @@ extension ChatStore {
               lobby.joinedPlayerIDs.count >= IndianPokerSnapshot.minimumPlayers,
               let keys = publicKeys(for: lobby.joinedPlayerIDs)
         else { return }
+        guard await assertEveryoneCanPay(lobby.joinedPlayerIDs, bet: lobby.bet) else { return }
 
         let first = lobby.joinedPlayerIDs[0]
         let second = lobby.joinedPlayerIDs[1]
@@ -238,6 +271,7 @@ extension ChatStore {
               lobby.joinedPlayerIDs.count >= DoubtSnapshot.minimumPlayers,
               let keys = publicKeys(for: lobby.joinedPlayerIDs)
         else { return }
+        guard await assertEveryoneCanPay(lobby.joinedPlayerIDs, bet: lobby.bet) else { return }
         do {
             guard let round = try await DoubtSnapshot.startRound(
                 seating: lobby.joinedPlayerIDs,
@@ -323,6 +357,7 @@ extension ChatStore {
               me == snapshot.hostID,
               lobby.joinedPlayerIDs.count >= BlackjackSnapshot.minimumPlayers
         else { return }
+        guard await assertEveryoneCanPay(lobby.joinedPlayerIDs, bet: lobby.bet) else { return }
         var next = snapshot
         next.phase = .playing(BlackjackSnapshot.startRound(playerIDs: lobby.joinedPlayerIDs, bet: lobby.bet))
         await sendGameMove(.blackjack(next), in: conversationID)
@@ -374,6 +409,7 @@ extension ChatStore {
               me == snapshot.hostID,
               lobby.joinedPlayerIDs.count >= ChinchiroSnapshot.minimumPlayers
         else { return }
+        guard await assertEveryoneCanPay(lobby.joinedPlayerIDs, bet: lobby.bet) else { return }
         var next = snapshot
         next.phase = .rolling(
             ChinchiroSnapshot.Round(playerIDs: lobby.joinedPlayerIDs, bet: lobby.bet, rolls: [:])
