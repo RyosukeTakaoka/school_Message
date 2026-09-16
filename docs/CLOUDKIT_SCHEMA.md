@@ -219,7 +219,7 @@ recordName: クライアントが採番した UUID
 
 ## HorseRaceBet / HorseRaceResult
 
-競馬（平日 15:00 発走）の馬券と、レース結果の確定レコード。
+競馬（平日 15:05 発走）の馬券と、レース結果の確定レコード。
 
 出走表（9 頭の馬名・脚質・調子・オッズ）はレコードに持たない。開催日から
 決まる種でどの端末でも同じ表を組み立てられるため、保存する必要がない。
@@ -233,7 +233,7 @@ recordName: クライアントが採番した UUID
 | `kind` | String | QUERYABLE | 券種（`win` / `place` / `quinella` / `exacta` / `wide` / `trio` / `trifecta`） |
 | `selections` | Int(64) (List) | — | 選んだ馬番。券種によって 1〜3 個 |
 | `amount` | Int(64) | — | 賭けた CHIP |
-| `createdAt` | Date/Time | QUERYABLE, SORTABLE | 締切（14:50）より前のものだけ有効 |
+| `createdAt` | Date/Time | QUERYABLE, SORTABLE | 締切（14:55）より前のものだけ有効 |
 
 recordName: クライアントが採番した UUID
 

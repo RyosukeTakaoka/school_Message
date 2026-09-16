@@ -5,12 +5,18 @@ import UIKit
 ///
 /// 派手にしすぎると鬱陶しいので, 「めくれた」のような小さな節目は軽い
 /// インパクトだけにし, 「結果が出た」場面だけ少し強めの通知にする.
+///
+/// 設定(`GamePreferences.hapticsEnabled`)でオフにできる. 各ゲーム画面から
+/// 直接呼ばれる静的な関数なので, `AppEnvironment` を経由せず `UserDefaults`
+/// を直接読む(`GamePreferences.hapticsEnabledRawValue` 参照).
 enum GameHaptics {
     static func tick() {
+        guard GamePreferences.hapticsEnabledRawValue() else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     static func result(didWin: Bool) {
+        guard GamePreferences.hapticsEnabledRawValue() else { return }
         UINotificationFeedbackGenerator().notificationOccurred(didWin ? .success : .warning)
     }
 }

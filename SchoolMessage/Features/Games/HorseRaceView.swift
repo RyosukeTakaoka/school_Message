@@ -99,10 +99,18 @@ struct HorseRaceView: View {
             Text(phaseText(state.phase))
                 .font(.subheadline)
                 .foregroundStyle(Palette.subdued)
-            Text("発走 15:00 / 締切 14:50 ・ 馬券 \(state.totalBetCount) 枚")
+            Text("発走 \(postTimeText) / 締切 \(closingTimeText) ・ 馬券 \(state.totalBetCount) 枚")
                 .font(.caption)
                 .foregroundStyle(Palette.subdued)
         }
+    }
+
+    private var postTimeText: String {
+        String(format: "%02d:%02d", HorseRaceRules.postHour, HorseRaceRules.postMinute)
+    }
+
+    private var closingTimeText: String {
+        String(format: "%02d:%02d", HorseRaceRules.closingHour, HorseRaceRules.closingMinute)
     }
 
     private var untrustedNotice: some View {

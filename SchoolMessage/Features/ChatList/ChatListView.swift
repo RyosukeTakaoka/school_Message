@@ -174,7 +174,7 @@ struct ChatListView: View {
         .accessibilityLabel(String(localized: "CHIPランキング"))
     }
 
-    /// 競馬への入り口. 平日 15:00 の 1 日 1 レースなので, 見逃さないよう
+    /// 競馬への入り口. 平日 15:05 の 1 日 1 レースなので, 見逃さないよう
     /// 掲示板やランキングと並べて一番上に置く.
     private var horseRaceEntryRow: some View {
         Button(action: onShowHorseRace) {
@@ -190,7 +190,7 @@ struct ChatListView: View {
                     Text("競馬")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Color.primary)
-                    Text("平日15:00発走。14:50まで馬券を買えます")
+                    Text("平日15:05発走。14:55まで馬券を買えます")
                         .font(.subheadline)
                         .foregroundStyle(Palette.subdued)
                         .lineLimit(1)

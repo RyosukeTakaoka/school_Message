@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-/// 競馬(平日 15:00 発走).
+/// 競馬(平日 15:05 発走).
 ///
 /// ## 他の遊びとの違い
 /// チャットの中の対戦は「参加者どうしの奪い合い」で, CHIP の総量は変わらない.
@@ -43,14 +43,14 @@ enum HorseRaceRules {
 
     /// 発走時刻(時, 分).
     static let postHour = 15
-    static let postMinute = 0
+    static let postMinute = 5
 
     /// 締切時刻(時, 分). 発走の 10 分前.
     static let closingHour = 14
-    static let closingMinute = 50
+    static let closingMinute = 55
 
     /// レースの演出にかける秒数.
-    static let runDuration: Double = 12
+    static let runDuration: Double = 16
 
     /// 精算をさかのぼって確かめる日数.
     ///
@@ -120,7 +120,7 @@ enum HorseRaceSchedule {
         dateFormatter.date(from: raceID)
     }
 
-    /// 締切時刻(14:50).
+    /// 締切時刻(14:55).
     static func closingTime(raceID: String, calendar: Calendar = .current) -> Date? {
         guard let day = date(fromRaceID: raceID) else { return nil }
         return calendar.date(
@@ -131,7 +131,7 @@ enum HorseRaceSchedule {
         )
     }
 
-    /// 発走時刻(15:00).
+    /// 発走時刻(15:05).
     static func postTime(raceID: String, calendar: Calendar = .current) -> Date? {
         guard let day = date(fromRaceID: raceID) else { return nil }
         return calendar.date(
