@@ -44,7 +44,20 @@ final class ChatStore {
     private(set) var isRefreshingConversations = false
 
     /// 画面上部に出す一時的なエラー.
-    var banner: AppError?
+    ///
+    /// 打ち切り(`AppError.cancelled`)は出さない. 画面を閉じた, 表示していた
+    /// データが差し替わった, といった理由で処理をやめたときに起きるもので,
+    /// 失敗ではないうえ利用者にできることも無い. ここで捨てておくことで,
+    /// 32 か所ある `banner = AppError.wrap(...)` を一つずつ直さなくて済む.
+    var banner: AppError? {
+        get { bannerStorage }
+        set {
+            guard newValue != .cancelled else { return }
+            bannerStorage = newValue
+        }
+    }
+
+    private var bannerStorage: AppError?
 
     /// 右ペインに表示している会話.
     var selectedConversationID: ConversationID?

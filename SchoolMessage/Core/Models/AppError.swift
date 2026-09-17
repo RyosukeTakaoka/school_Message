@@ -34,6 +34,15 @@ enum AppError: LocalizedError, Equatable {
     case mediaSaveFailed
 
     // MARK: その他
+
+    /// 処理を途中で打ち切った(画面を閉じた, 表示していたデータが差し替わった,
+    /// 引き下げ更新の最中に別の画面へ移った など).
+    ///
+    /// **失敗ではない**ので, 画面には出さない(`ChatStore.banner` が捨てる).
+    /// 利用者にできることが何も無いのに「処理が中断されました」と出ると,
+    /// 何か壊れたように見えてしまうため.
+    case cancelled
+
     case underlying(String)
 
     var errorDescription: String? {
@@ -76,6 +85,8 @@ enum AppError: LocalizedError, Equatable {
             String(localized: "「写真」への保存が許可されていません")
         case .mediaSaveFailed:
             String(localized: "保存できませんでした")
+        case .cancelled:
+            String(localized: "処理を中断しました")
         case .underlying(let message):
             message
         }
@@ -113,7 +124,7 @@ enum AppError: LocalizedError, Equatable {
             return String(localized: "「設定」→「アプリ」→「写真」から許可してください")
         case .mediaSaveFailed:
             return String(localized: "もう一度お試しください")
-        case .notAParticipant, .senderMismatch, .underlying:
+        case .notAParticipant, .senderMismatch, .cancelled, .underlying:
             return nil
         }
     }
@@ -128,7 +139,7 @@ enum AppError: LocalizedError, Equatable {
              .missingEncryptionKey, .decryptionFailed, .recipientHasNoPublicKey,
              .mediaTooLarge, .unsupportedMedia, .mediaProcessingFailed, .videoTooLong,
              .photoLibraryAccessDenied, .mediaSaveFailed,
-             .underlying:
+             .cancelled, .underlying:
             false
         }
     }
@@ -142,10 +153,17 @@ enum AppError: LocalizedError, Equatable {
     /// 任意の `Error` を `AppError` に寄せる.
     static func wrap(_ error: any Error) -> AppError {
         if let appError = error as? AppError { return appError }
-        if error is CancellationError { return .underlying(String(localized: "処理が中断されました")) }
+        if error is CancellationError { return .cancelled }
         let nsError = error as NSError
+        // 打ち切りは Swift の `CancellationError` 以外の形でも返ってくる
+        // (通信を途中でやめた場合や, CloudKit の操作を取り消した場合).
+        if nsError.domain == NSCocoaErrorDomain, nsError.code == NSUserCancelledError {
+            return .cancelled
+        }
         if nsError.domain == NSURLErrorDomain {
             switch nsError.code {
+            case NSURLErrorCancelled:
+                return .cancelled
             case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost:
                 return .offline
             case NSURLErrorTimedOut:
