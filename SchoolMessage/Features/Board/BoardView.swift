@@ -42,6 +42,11 @@ struct BoardView: View {
                             } label: {
                                 threadRow(thread)
                             }
+                            .listRowBackground(
+                                store.unreadPostCount(in: thread) > 0
+                                    ? Palette.unreadBadge.opacity(0.08)
+                                    : nil
+                            )
                         }
                     }
                 } header: {
@@ -127,10 +132,11 @@ struct BoardView: View {
     }
 
     private func threadRow(_ thread: BoardThread) -> some View {
-        HStack(spacing: AppConstants.Layout.standardSpacing) {
+        let unread = store.unreadPostCount(in: thread)
+        return HStack(spacing: AppConstants.Layout.standardSpacing) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(thread.title)
-                    .font(.body.weight(.medium))
+                    .font(.body.weight(unread > 0 ? .semibold : .medium))
                     .foregroundStyle(Color.primary)
                     .lineLimit(1)
                 HStack(spacing: AppConstants.Layout.compactSpacing) {
@@ -142,6 +148,9 @@ struct BoardView: View {
                 .labelStyle(.titleAndIcon)
             }
             Spacer(minLength: 0)
+            if unread > 0 {
+                UnreadCountBadge(count: unread)
+            }
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Palette.subdued)
@@ -155,6 +164,7 @@ struct BoardView: View {
         defer { isLoading = false }
         do {
             threads = try await environment.backend.fetchBoardThreads()
+            store.updateBoardUnreadCount(from: threads)
         } catch {
             store.setBanner(AppError.wrap(error))
         }
@@ -179,7 +189,9 @@ struct BoardView: View {
             if let image {
                 media = try await store.processor.prepareImage(originalData: image)
             }
-            _ = try await environment.backend.createBoardThread(title: title, body: body, image: media)
+            let created = try await environment.backend.createBoardThread(title: title, body: body, image: media)
+            // 自分が立てたスレッドなので, 最初の書き込みぶんは未読にしない.
+            store.markBoardThreadSeen(created, postCount: created.postCount)
             isComposingThread = false
             await load()
         } catch {

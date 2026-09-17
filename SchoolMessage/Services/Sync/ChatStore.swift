@@ -31,6 +31,12 @@ final class ChatStore {
     var profilesByID: [UserID: UserProfile] = [:]
     /// 自分の CHIP 残高. 取得できるまでは nil(`ChatStore+ChipGames.swift` が更新する).
     var myWallet: PlayerWallet?
+    /// 掲示板の未読件数(`ChatStore+Board.swift` が更新する).
+    ///
+    /// 掲示板はチャットと違って開いている間だけポーリングする作りなので,
+    /// この値は「サインインしたとき・前面に戻ったとき・掲示板を開いたとき」
+    /// までの時点のもので, 常にリアルタイムではない.
+    var boardUnreadCount = 0
     // 以下 3 つは `ChatStore+Messaging.swift` の拡張からも更新するため
     // `private(set)` にしていない. View 側からは読み取り専用として扱い,
     // 変更は必ずストアのメソッド経由で行うこと.
@@ -89,6 +95,8 @@ final class ChatStore {
     /// `ChatStore+Messaging.swift` の色勝負まわりの拡張からも使うため private にしていない.
     let crypto: CryptoService
     private let networkMonitor: NetworkMonitor
+    /// `ChatStore+Board.swift` の拡張からも使うため private にしていない.
+    let boardReadState: BoardReadState
 
     // 画面が観測する必要のない内部状態は追跡対象から外す.
     @ObservationIgnored private var eventTask: Task<Void, Never>?
@@ -101,7 +109,8 @@ final class ChatStore {
         mediaProcessor: MediaProcessor,
         mediaStore: MediaStore,
         crypto: CryptoService,
-        networkMonitor: NetworkMonitor
+        networkMonitor: NetworkMonitor,
+        boardReadState: BoardReadState = BoardReadState()
     ) {
         self.backend = backend
         self.outbox = outbox
@@ -109,6 +118,7 @@ final class ChatStore {
         self.mediaStore = mediaStore
         self.crypto = crypto
         self.networkMonitor = networkMonitor
+        self.boardReadState = boardReadState
 
         networkMonitor.onReconnect = { [weak self] in
             self?.flushOutbox()
@@ -215,6 +225,9 @@ final class ChatStore {
         // 馬券を買ったまま何日か開かなかった人にも, あとから払い戻しが届くようにする
         // (競馬の画面を開かないと精算されない, という取りこぼしを防ぐ).
         await settleRecentHorseRaces()
+
+        // 掲示板を開いていなくても, 一覧の入り口にバッジを出せるようにする.
+        await refreshBoardUnreadCount()
     }
 
     /// プッシュ購読を用意する.
@@ -337,6 +350,7 @@ final class ChatStore {
             self.flushOutbox()
             // 前回の精算が通信の失敗などで漏れていた場合に, ここで拾い直す.
             await self.settleFinishedChipGames()
+            await self.refreshBoardUnreadCount()
         }
     }
 

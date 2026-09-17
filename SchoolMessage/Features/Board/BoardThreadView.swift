@@ -229,6 +229,7 @@ struct BoardThreadView: View {
         defer { isLoading = false }
         do {
             posts = try await environment.backend.fetchBoardPosts(in: thread.id)
+            store.markBoardThreadSeen(thread, postCount: posts.count)
         } catch {
             store.setBanner(AppError.wrap(error))
         }

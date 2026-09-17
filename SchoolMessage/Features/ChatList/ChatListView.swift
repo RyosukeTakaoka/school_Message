@@ -124,7 +124,7 @@ struct ChatListView: View {
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("掲示板")
-                        .font(.body.weight(.semibold))
+                        .font(.body.weight(store.boardUnreadCount > 0 ? .bold : .semibold))
                         .foregroundStyle(Color.primary)
                     Text("みんなが読める、名前の出ない掲示板")
                         .font(.subheadline)
@@ -132,6 +132,9 @@ struct ChatListView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if store.boardUnreadCount > 0 {
+                    UnreadCountBadge(count: store.boardUnreadCount)
+                }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Palette.subdued)
@@ -285,7 +288,7 @@ struct ChatListRow: View {
                         .lineLimit(1)
                     Spacer(minLength: 0)
                     if conversation.unreadCount > 0 {
-                        unreadBadge
+                        UnreadCountBadge(count: conversation.unreadCount)
                     }
                 }
             }
@@ -319,16 +322,6 @@ struct ChatListRow: View {
             return last.preview
         }
         return "\(store.displayName(for: last.senderID)): \(last.preview)"
-    }
-
-    private var unreadBadge: some View {
-        Text(conversation.unreadCount > 99 ? "99+" : "\(conversation.unreadCount)")
-            .font(.caption2.weight(.bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Palette.unreadBadge, in: Capsule())
-            .monospacedDigit()
     }
 
     /// VoiceOver では「名前・未読件数・最後のメッセージ・時刻」を一続きで読む.

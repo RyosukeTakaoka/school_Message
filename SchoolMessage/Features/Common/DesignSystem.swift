@@ -99,3 +99,22 @@ struct BubbleShape: Shape {
         return path
     }
 }
+
+/// 未読件数を出す丸いバッジ(「①」のように件数で示す).
+///
+/// チャットの一覧(`ChatListRow`)と掲示板(`BoardView`)の両方で使うので,
+/// 見た目を 1 か所にまとめてある.
+struct UnreadCountBadge: View {
+
+    let count: Int
+
+    var body: some View {
+        Text(count > 99 ? "99+" : "\(count)")
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Palette.unreadBadge, in: Capsule())
+            .monospacedDigit()
+    }
+}
