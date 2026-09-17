@@ -98,6 +98,12 @@ final class ChatStore {
     /// `ChatStore+Board.swift` の拡張からも使うため private にしていない.
     let boardReadState: BoardReadState
 
+    /// この起動中に確かめて, 精算するものが無かった開催日.
+    ///
+    /// 馬券を買っていない日は何度確かめても結果が変わらないので, 開いている間
+    /// 同じ問い合わせを繰り返さないために覚えておく(`ChatStore+HorseRace` 参照).
+    @ObservationIgnored var checkedHorseRaceIDs: Set<String> = []
+
     // 画面が観測する必要のない内部状態は追跡対象から外す.
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
@@ -307,6 +313,7 @@ final class ChatStore {
         pollTask = Task { [weak self] in
             var lastListRefresh = Date.now
             var lastRevisionCheck = Date.now
+            var lastHorseRaceCheck = Date.now
             while !Task.isCancelled {
                 guard let self else { return }
                 let interval = self.selectedConversationID == nil
@@ -332,6 +339,14 @@ final class ChatStore {
                 if Date.now.timeIntervalSince(lastListRefresh) >= AppConstants.Timing.fallbackPollInterval {
                     lastListRefresh = .now
                     await self.refreshConversations()
+                }
+
+                // アプリを開いたままにしていると前面復帰の合図が来ないため,
+                // 発走をまたいでも精算されないままになる. ここでも確かめる.
+                if Date.now.timeIntervalSince(lastHorseRaceCheck)
+                    >= AppConstants.Timing.horseRaceSettlementCheckInterval {
+                    lastHorseRaceCheck = .now
+                    await self.settleRecentHorseRaces()
                 }
             }
         }

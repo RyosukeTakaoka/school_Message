@@ -132,10 +132,17 @@ extension ChatStore {
             amount: amount
         )
 
-        // 引き落とし. 対戦 ID は記録しない(同じ馬券をもう一度引く場面が無く,
-        // 記録すると精算の重複防止に使っている一覧をいたずらに埋めてしまうため).
+        // 引き落とし. 馬券 1 枚ごとの ID を残す.
+        //
+        // ランキングは「1 回でも遊び終えた人」だけを並べる仕組みで, その判定に
+        // この記録(`PlayerWallet.settledGameIDs`)を使っている. ここを空のままに
+        // すると, 馬券を買って CHIP が減っているのに, レースの精算が済むまで
+        // ランキングに出てこない(競馬しか遊ばない人は特に分かりにくい).
+        //
+        // 精算の重複防止に使う ID(`race-<開催日>`)とは別の名前にしてあるので,
+        // 払い戻しが「精算済み」と誤判定されることはない.
         do {
-            self.myWallet = try await backend.applyChipDelta(-amount, gameID: nil)
+            self.myWallet = try await backend.applyChipDelta(-amount, gameID: "race-bet-\(bet.id)")
         } catch {
             banner = AppError.wrap(error)
             return false
@@ -164,7 +171,13 @@ extension ChatStore {
             guard case .finished = HorseRaceSchedule.phase(raceID: raceID, now: now) else { continue }
             // すでに精算済みなら通信しない.
             if myWallet?.hasSettled(gameID: Self.horseRaceSettlementID(raceID: raceID)) == true { continue }
-            _ = await loadHorseRace(raceID: raceID, now: now)
+            // この起動中に確かめて, 馬券が無かった日も通信しない.
+            if checkedHorseRaceIDs.contains(raceID) { continue }
+
+            let state = await loadHorseRace(raceID: raceID, now: now)
+            // 馬券が無ければ, この先も精算するものは出てこない(確定後のレースは
+            // 変わらないため). 開いている間の繰り返しを止める.
+            if state.myBets.isEmpty { checkedHorseRaceIDs.insert(raceID) }
         }
     }
 
