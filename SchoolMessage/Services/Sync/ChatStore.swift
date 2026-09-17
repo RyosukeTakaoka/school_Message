@@ -350,6 +350,9 @@ final class ChatStore {
             self.flushOutbox()
             // 前回の精算が通信の失敗などで漏れていた場合に, ここで拾い直す.
             await self.settleFinishedChipGames()
+            // 競馬も同様. アプリを再起動しない限り, 前面に戻すだけでは
+            // 発走から結果確定までの間に精算されないままだったため.
+            await self.settleRecentHorseRaces()
             await self.refreshBoardUnreadCount()
         }
     }

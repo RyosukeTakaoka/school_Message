@@ -150,6 +150,10 @@ struct ChipRankingView: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
+        // アプリを前面に戻さず, 開きっぱなしのまま直接ここを開いた場合
+        // (`ChatStore.handleForeground` が走らない)にも, 自分の馬券だけは
+        // ここで精算を確かめる. 他人の馬券は他人の端末でしか精算できない.
+        await store.settleRecentHorseRaces()
         await store.refreshWallet()
         entries = await store.fetchChipRanking()
     }
