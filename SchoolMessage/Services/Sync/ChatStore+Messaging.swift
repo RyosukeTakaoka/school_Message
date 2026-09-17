@@ -270,9 +270,22 @@ extension ChatStore {
     /// 遊びが複数あるので, 種類ごとに分けて探す(オセロの途中で色勝負を始めても,
     /// お互いの状態を上書きしないように).
     func currentGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) -> GameSnapshot? {
-        messagesByConversation[conversationID]?
-            .last(where: { $0.content.game?.kind == kind && !$0.isUnsent })?
-            .content.game
+        let matching = (messagesByConversation[conversationID] ?? [])
+            .filter { $0.content.game?.kind == kind && !$0.isUnsent }
+        guard let last = matching.last?.content.game else { return nil }
+
+        // インディアンポーカーだけ, 相手の選択を見ずに動ける場面がある
+        // (`IndianPokerSnapshot.merged(_:)` 参照). 同じ対戦のメッセージを
+        // 畳み込み, 時系列の後勝ちで相手の選択が消えてしまうのを防ぐ.
+        if case .indianPoker(let latest) = last {
+            let sameRound = matching.compactMap { message -> IndianPokerSnapshot? in
+                guard case .indianPoker(let snapshot) = message.content.game, snapshot.gameID == latest.gameID
+                else { return nil }
+                return snapshot
+            }
+            return .indianPoker(IndianPokerSnapshot.merged(sameRound))
+        }
+        return last
     }
 
     /// いま遊べる対戦. 取り消されたものは「無い」ものとして扱う.

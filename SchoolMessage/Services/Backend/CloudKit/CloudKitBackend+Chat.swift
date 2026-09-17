@@ -324,6 +324,12 @@ extension CloudKitBackend {
 
         // 既にあれば, それを使う(両者が同時に開いても同じ ID に収束する).
         if let existing = try? await fetchConversation(conversationID) {
+            // 以前にここを退出していても, また開いたのだから続ける意思表示として扱う.
+            // 退出記録を残したままだと, このあと自分が送るメッセージが届くたびに
+            // `fetchConversations` の絞り込みで一覧から消えてしまう
+            // (`leaveConversation` 参照. 1 対 1 の会話 ID は決定的なので,
+            // 同じ相手と再開すると必ず同じ ID・同じ退出記録に行き当たる).
+            await clearLeaveRecordIfNeeded(conversationID: conversationID, userID: me)
             return existing
         }
 
@@ -345,6 +351,7 @@ extension CloudKitBackend {
         } catch {
             // 相手が一瞬先に作った場合. 相手のレコードを正として読み直す.
             if CloudKitErrorMapping.isAlreadyExists(error) {
+                await clearLeaveRecordIfNeeded(conversationID: conversationID, userID: me)
                 return try await fetchConversation(conversationID)
             }
             throw CloudKitErrorMapping.appError(from: error)
@@ -483,6 +490,13 @@ extension CloudKitBackend {
         cacheConversationMetadata(participants: sorted, owner: raw.ownerID, for: conversationID)
         eventHub.emit(.conversationsChanged)
 
+        // 一度退出した人を追加し直した場合, その人ぶんの退出記録が残っていると
+        // 同じ理由(`openDirectConversation` のコメント参照)で, 追加され直した
+        // 本人の一覧からまた消えてしまう.
+        for userID in newIDs {
+            await clearLeaveRecordIfNeeded(conversationID: conversationID, userID: userID)
+        }
+
         return try await fetchConversation(conversationID)
     }
 
@@ -509,6 +523,21 @@ extension CloudKitBackend {
 
         await crypto.forgetKey(for: conversationID)
         eventHub.emit(.conversationsChanged)
+    }
+
+    /// 退出記録が残っていれば消す(`leaveConversation` の巻き戻し).
+    ///
+    /// 1 対 1 の会話は `openDirectConversation` で「無ければ作る, あれば使う」
+    /// という形になっており, 決定的な ID(`Conversation.directConversationID`)
+    /// のため, 以前に退出した相手と再開すると必ず同じ会話・同じ退出記録に
+    /// 行き当たる. 消さずに使い続けると, このあと送るメッセージが届くたびに
+    /// `fetchConversations` の絞り込みで一覧から消えてしまう
+    /// (退出は消したこと自体には気付けないので, 失敗しても黙って諦める).
+    private func clearLeaveRecordIfNeeded(conversationID: ConversationID, userID: UserID) async {
+        let recordID = CKRecord.ID(
+            recordName: CKSchema.ConversationLeave.recordName(conversation: conversationID, user: userID)
+        )
+        _ = try? await database.deleteRecord(withID: recordID)
     }
 
     /// 会話 1 件を取得して復号する.
