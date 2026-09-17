@@ -27,7 +27,11 @@ struct PlayerWallet: Hashable, Sendable {
     static let initialBalance = 1000
 
     /// 記録しておく精算済み対戦の数(端末を変えても効くよう, 残高と一緒に保存する).
-    static let settledHistoryLimit = 100
+    ///
+    /// 古いものから捨てるので, 二重精算を防ぎたい期間(対戦は 3 日,
+    /// 競馬は 7 日さかのぼって確かめる)のあいだに押し出されない程度の
+    /// 余裕が要る. 馬券は 1 枚ごとに記録が増えるため, そのぶん多めにしてある.
+    static let settledHistoryLimit = 300
 
     init(
         ownerID: UserID,

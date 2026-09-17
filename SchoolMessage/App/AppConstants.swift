@@ -80,6 +80,12 @@ enum AppConstants {
         static let maxRetryAttempts = 4
         /// 「送信中」表示をこの時間を超えて維持しない(ハングして見えるのを防ぐ).
         static let sendingStallThreshold: TimeInterval = 60
+        /// 競馬の精算を確かめる間隔.
+        ///
+        /// アプリを開いたままにしていると前面復帰の合図が来ないため, 発走を
+        /// またいでも精算されないままになる. 1 日 1 レースなので短くする必要は無く,
+        /// 問い合わせを増やさないよう長めにしてある.
+        static let horseRaceSettlementCheckInterval: TimeInterval = 5 * 60
     }
 
     enum Validation {
