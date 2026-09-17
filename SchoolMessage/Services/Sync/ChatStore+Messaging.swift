@@ -112,6 +112,13 @@ extension ChatStore {
         }
         current.sort { $0.createdAt < $1.createdAt }
         messagesByConversation[conversationID] = current
+
+        // 決着した対戦が届いたら, その対戦画面を開いていなくても精算する.
+        // (先に振って画面を閉じた人の CHIP が引かれない, という取りこぼしを防ぐ.
+        //  `settleFinishedChipGames` のコメント参照.)
+        if incoming.contains(where: { $0.content.game?.isFinished == true }) {
+            Task { await settleFinishedChipGames() }
+        }
     }
 
     /// 相手がどこまで読んだかを取り直す(自分の送信に付く「既読」の更新).

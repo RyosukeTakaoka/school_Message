@@ -83,6 +83,51 @@ extension ChatStore {
         }
     }
 
+    /// 決着した対戦を, 対戦画面を開いていなくても精算する.
+    ///
+    /// ## なぜ必要か
+    /// 精算は「自分の手で決着したとき」(`rollChinchiro` など)か,
+    /// 「決着した瞬間に対戦画面を開いていたとき」(各画面の `.task(id:)`)しか
+    /// 走らなかった. チンチロのように 1 回振ったら自分の手番が終わる遊びでは,
+    /// **先に振った人が画面を閉じたあとに相手が振って決着する**のがふつうなので,
+    /// 先に振って負けた人の CHIP が引かれないまま残ってしまう.
+    /// 勝った人(最後に振った人)は自分の手で決着するので必ず受け取れるため,
+    /// 差額の CHIP が無から生まれることにもなっていた.
+    ///
+    /// メッセージが届いたところで呼ぶ(`merge`). 対戦の状態はチャットの
+    /// メッセージそのものなので, チャットを開けば必ず手元に流れてくる.
+    func settleFinishedChipGames(now: Date = .now) async {
+        guard let me = currentUserID else { return }
+
+        // 古い対戦まで遡らない. 精算済みの記録は直近 100 件しか持たないので
+        // (`PlayerWallet.settledHistoryLimit`), そこから溢れた古い対戦を
+        // もう一度精算してしまう危険を避ける.
+        let cutoff = now.addingTimeInterval(-Self.chipSettlementLookback)
+
+        // 1 つの対戦は手を進めるたびにメッセージが増えるので, 同じ対戦 ID は
+        // 新しい状態で上書きして, 最後の状態だけを見る.
+        var latestByGameID: [String: GameSnapshot] = [:]
+        for messages in messagesByConversation.values {
+            for message in messages where message.createdAt >= cutoff && !message.isUnsent {
+                guard let game = message.content.game,
+                      game.isFinished,
+                      !game.isCancelled,
+                      game.chipDeltas[me] != nil
+                else { continue }
+                latestByGameID[game.gameID] = game
+            }
+        }
+
+        for game in latestByGameID.values {
+            // 二重に精算しない. 端末をまたいだ判定は `applyChipDelta` 側でも行う.
+            guard myWallet?.hasSettled(gameID: game.gameID) != true else { continue }
+            await settleChipsIfNeeded(for: game)
+        }
+    }
+
+    /// 取りこぼしを拾いにいく範囲.
+    private static var chipSettlementLookback: TimeInterval { 60 * 60 * 24 * 3 }
+
     func fetchChipRanking(limit: Int = 50) async -> [ChipRankingEntry] {
         do {
             let entries = try await backend.fetchChipRanking(limit: limit)
