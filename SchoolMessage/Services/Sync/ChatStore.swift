@@ -322,6 +322,8 @@ final class ChatStore {
                 await self.markSelectedConversationRead()
             }
             self.flushOutbox()
+            // 前回の精算が通信の失敗などで漏れていた場合に, ここで拾い直す.
+            await self.settleFinishedChipGames()
         }
     }
 
