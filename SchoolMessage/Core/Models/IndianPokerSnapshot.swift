@@ -153,8 +153,14 @@ struct IndianPokerSnapshot: Hashable, Sendable, Codable {
     }
 
     /// 勝った人. 引き分けなら nil.
+    ///
+    /// 両者が降りた場合(`merged(_:)` 参照)は, どちらも勝負を続ける気が無かった
+    /// ということなので, 賭けをそのまま戻す引き分けとして扱う(先に書いた
+    /// `firstAction == .fold` の判定だけに頼ると, 両者が降りていても
+    /// 必ず 2 人目の勝ちになってしまう).
     var winnerID: UserID? {
         guard let round, isFinished else { return nil }
+        if round.firstAction == .fold, round.secondAction == .fold { return nil }
         if round.firstAction == .fold { return round.secondPlayerID }
         if round.secondAction == .fold { return round.firstPlayerID }
         guard let first = round.revealedFirstCard, let second = round.revealedSecondCard else { return nil }
@@ -164,11 +170,9 @@ struct IndianPokerSnapshot: Hashable, Sendable, Codable {
         return firstStrength > secondStrength ? round.firstPlayerID : round.secondPlayerID
     }
 
-    /// 引き分け(同じ強さで見せ合った)か.
+    /// 引き分け(同じ強さで見せ合った, または両者が降りた)か.
     var isDraw: Bool {
-        guard let round, isFinished else { return false }
-        guard round.firstAction == .call, round.secondAction == .call else { return false }
-        return winnerID == nil
+        isFinished && winnerID == nil
     }
 
     // MARK: - 開始
@@ -266,6 +270,45 @@ struct IndianPokerSnapshot: Hashable, Sendable, Codable {
         var next = self
         next.phase = .playing(round)
         return next
+    }
+
+    // MARK: - 同時に行動したメッセージの畳み込み
+
+    /// 同じ対戦(`gameID`)のメッセージを 1 つに畳み込む.
+    ///
+    /// ## なぜ畳み込みが必要か
+    /// このアプリの対戦は「1 手 = 1 メッセージ, 最後のメッセージが現在の状態」
+    /// という設計(`ChatStore.currentGame` 参照)になっている. 相手の手を見てから
+    /// 自分が動く遊びではこれで十分だが, インディアンポーカーの
+    /// 「勝負する/降りる」はお互いが相手の選択を見ずに好きなタイミングで選べる.
+    /// そのため 2 人がほぼ同時に選ぶと, どちらも「相手はまだ選んでいない」
+    /// という同じ状態から, 自分の選択だけが入った別々のメッセージを作ってしまう.
+    ///
+    /// ここで「時系列で後のメッセージだけを現在の状態とする」と, 先に送られた
+    /// ほうの選択が消えてしまう. 消えた側は「選んだのに何も選んでいないことに
+    /// される」ため, カードの強さや実際の選択と関係なく勝ち負けが決まってしまう
+    /// (降りたのに勝ちになる, 勝負したのに強制的に負けになる, といった形で現れる).
+    ///
+    /// 対策として, 同じ `gameID` を持つメッセージを全部畳み込み, 一度埋まった
+    /// 選択・公開されたカードは, 後続のメッセージに引き継がれていなくても消さない
+    /// (選択は一度きりで変わらないので, どのメッセージの値を採っても食い違うことは無い).
+    static func merged(_ snapshots: [IndianPokerSnapshot]) -> IndianPokerSnapshot {
+        guard let base = snapshots.last else {
+            preconditionFailure("merged(_:) には 1 件以上渡す")
+        }
+        guard var round = base.round else { return base }
+
+        for snapshot in snapshots {
+            guard let other = snapshot.round else { continue }
+            round.firstAction = round.firstAction ?? other.firstAction
+            round.secondAction = round.secondAction ?? other.secondAction
+            round.revealedFirstCard = round.revealedFirstCard ?? other.revealedFirstCard
+            round.revealedSecondCard = round.revealedSecondCard ?? other.revealedSecondCard
+        }
+
+        var merged = base
+        merged.phase = .playing(round)
+        return merged
     }
 
     /// 精算. 勝った人が相手のぶんを受け取る.
