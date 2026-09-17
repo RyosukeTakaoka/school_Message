@@ -19,6 +19,13 @@ struct PlayerWallet: Hashable, Sendable {
     var balance: Int
     /// CHIP が 0 になった日時. 復活したら nil に戻す.
     var bankruptAt: Date?
+    /// 最後に復活ルーレットに挑戦した日時. 挑戦のたびに更新し, 復活したら nil に戻す.
+    ///
+    /// `bankruptAt` は「0 になった最初の瞬間」を指したまま動かさない
+    /// (`claimingRevival` 参照). はずれを引くたびにここだけ進めることで,
+    /// 「最初だけ `bankruptRestDays` 待ち, 以降はずれるたびに `revivalRetryRestDays`
+    /// だけ待つ」という, 2 段階の待ち時間を表せる.
+    var lastRevivalAttemptAt: Date?
     /// 精算済みの対戦 ID. 同じ対戦で二重に増減させないための記録.
     var settledGameIDs: [String]
     var updatedAt: Date
@@ -37,12 +44,14 @@ struct PlayerWallet: Hashable, Sendable {
         ownerID: UserID,
         balance: Int = PlayerWallet.initialBalance,
         bankruptAt: Date? = nil,
+        lastRevivalAttemptAt: Date? = nil,
         settledGameIDs: [String] = [],
         updatedAt: Date = .now
     ) {
         self.ownerID = ownerID
         self.balance = balance
         self.bankruptAt = bankruptAt
+        self.lastRevivalAttemptAt = lastRevivalAttemptAt
         self.settledGameIDs = settledGameIDs
         self.updatedAt = updatedAt
     }
@@ -52,18 +61,42 @@ struct PlayerWallet: Hashable, Sendable {
 
 extension PlayerWallet {
 
-    /// 0 になった日の**翌日を丸 1 日空けて**, その次の日に復活する.
-    /// (月曜に 0 → 水曜に復活)
+    /// 0 になった日の**翌日を丸 1 日空けて**, その次の日に初めて挑戦できる.
+    /// (月曜に 0 → 水曜に挑戦可能)
     ///
     /// 「今日 0 にして明日から満額」を狙えてしまうと, 負けを取り返すために
     /// わざと 0 にする遊び方を誘発するため, 1 日空ける.
     static let bankruptRestDays = 2
 
-    /// 復活する日(その日の 0 時).
+    /// はずれてから, 次に挑戦できるまでの日数.
+    ///
+    /// 最初の `bankruptRestDays` より短くしてある. 「はずれるたびにまた
+    /// `bankruptRestDays` 待つ」にすると, 運が悪いだけで 1〜2 週間 CHIP を
+    /// 使えなくなることがあり, 罰というより詰みに近くなってしまうため.
+    /// 一度でも最初の待機を終えていれば, あとは 1 日 1 回のチャレンジとして扱う.
+    static let revivalRetryRestDays = 1
+
+    /// 最初に挑戦できるようになる日(その日の 0 時). まだ一度も 0 になっていなければ nil.
     func revivalDate(calendar: Calendar = .current) -> Date? {
         guard let bankruptAt else { return nil }
         let startOfBankruptDay = calendar.startOfDay(for: bankruptAt)
         return calendar.date(byAdding: .day, value: Self.bankruptRestDays, to: startOfBankruptDay)
+    }
+
+    /// 次に挑戦できる日(その日の 0 時).
+    ///
+    /// 最初の待機(`revivalDate`)と, 直前にはずれてからの待機
+    /// (`lastRevivalAttemptAt` + `revivalRetryRestDays`)のうち, 遅いほうを返す.
+    /// まだ一度も挑戦していなければ最初の待機だけで決まる.
+    func nextRevivalAttemptDate(calendar: Calendar = .current) -> Date? {
+        guard let firstEligible = revivalDate(calendar: calendar) else { return nil }
+        guard let lastAttempt = lastRevivalAttemptAt else { return firstEligible }
+        let retryEligible = calendar.date(
+            byAdding: .day,
+            value: Self.revivalRetryRestDays,
+            to: calendar.startOfDay(for: lastAttempt)
+        ) ?? firstEligible
+        return max(firstEligible, retryEligible)
     }
 
     /// CHIP が足りず, ゲームに参加できない状態か.
@@ -73,8 +106,10 @@ extension PlayerWallet {
 
     /// 復活のルーレットを回せる状態か.
     func isRevivalDue(now: Date = .now, calendar: Calendar = .current) -> Bool {
-        guard bankruptAt != nil, let revivalDate = revivalDate(calendar: calendar) else { return false }
-        return now >= revivalDate
+        guard bankruptAt != nil, let nextAttemptDate = nextRevivalAttemptDate(calendar: calendar) else {
+            return false
+        }
+        return now >= nextAttemptDate
     }
 
     /// 0 になったのに起点が記録されていなければ記録する. 変える必要がなければ nil.
@@ -88,25 +123,30 @@ extension PlayerWallet {
         return stamped
     }
 
-    /// 今回の復活で出る額.
+    /// この挑戦で出る額.
     ///
-    /// 回すたびに変わると, アプリを落として引き直す(いわゆるリセマラ)ができて
-    /// しまうため, **持ち主と「0 になった日時」から決まる値**にしてある.
-    /// 同じ破産 1 回につき結果はひとつで, 何度開き直しても変わらない.
-    var revivalAmount: Int {
-        guard let bankruptAt else { return Self.initialBalance }
-        return ChipRevivalWheel.amount(
-            seed: "\(ownerID.rawValue)#\(Int(bankruptAt.timeIntervalSince1970))"
-        )
+    /// `now` は呼び出し側(`ChatStore.claimRevivalIfDue`)がサーバへの問い合わせと
+    /// 共有する 1 つの時刻を渡す. 同じ `now` を渡す限り, アプリを落として
+    /// 引き直す(いわゆるリセマラ)はできない — 挑戦した瞬間に `lastRevivalAttemptAt`
+    /// としてサーバ側に刻まれ, 開き直しても同じ挑戦の結果しか読めなくなるため.
+    func revivalAmount(now: Date) -> Int {
+        ChipRevivalWheel.amount(seed: "\(ownerID.rawValue)#\(Int(now.timeIntervalSince1970))")
     }
 
     /// ルーレットの結果を受け取った財布を返す.
     ///
-    /// はずれ(遊べる額に届かない)ときは, その時点から数え直してまた待つ.
+    /// はずれ(遊べる額に届かない)ときは, `bankruptAt`(0 になった最初の瞬間)は
+    /// 動かさず, `lastRevivalAttemptAt` だけ進める. 次に挑戦できる日は
+    /// `nextRevivalAttemptDate` が計算する.
     func claimingRevival(now: Date = .now) -> PlayerWallet {
         var next = self
-        next.balance = revivalAmount
-        next.bankruptAt = next.balance < ChipRules.minBet ? now : nil
+        next.balance = revivalAmount(now: now)
+        if next.balance < ChipRules.minBet {
+            next.lastRevivalAttemptAt = now
+        } else {
+            next.bankruptAt = nil
+            next.lastRevivalAttemptAt = nil
+        }
         next.updatedAt = now
         return next
     }
@@ -121,9 +161,14 @@ extension PlayerWallet {
         next.updatedAt = now
 
         if next.balance < ChipRules.minBet {
-            if next.bankruptAt == nil { next.bankruptAt = now }
+            if next.bankruptAt == nil {
+                next.bankruptAt = now
+                // 新しい破産サイクルなので, 前回までの挑戦の記録は持ち越さない.
+                next.lastRevivalAttemptAt = nil
+            }
         } else {
             next.bankruptAt = nil
+            next.lastRevivalAttemptAt = nil
         }
 
         if let gameID, !next.settledGameIDs.contains(gameID) {

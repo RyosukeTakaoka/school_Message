@@ -33,29 +33,34 @@ extension ChatStore {
     }
 
     /// CHIP が足りないときに出す案内.
+    ///
+    /// 最初の待機中(まだ一度も挑戦していない)か, はずれたあとの再挑戦待ちかを
+    /// 区別せず, どちらも「次に挑戦できる日」だけを伝える
+    /// (`PlayerWallet.nextRevivalAttemptDate` 参照).
     var bankruptNotice: String? {
         guard let myWallet, myWallet.isBankrupt() else { return nil }
         if myWallet.isRevivalDue() {
             return String(localized: "CHIPが0です。復活ルーレットを回せます")
         }
-        guard let revivalDate = myWallet.revivalDate() else {
+        guard let nextAttemptDate = myWallet.nextRevivalAttemptDate() else {
             return String(localized: "CHIPが0です")
         }
         let formatter = DateFormatter()
         formatter.locale = .current
         formatter.setLocalizedDateFormatFromTemplate("Md")
-        return String(localized: "CHIPが0になりました。\(formatter.string(from: revivalDate))に復活ルーレットを回せます")
+        return String(localized: "CHIPが0です。\(formatter.string(from: nextAttemptDate))に復活ルーレットを回せます")
     }
 
     /// 復活のルーレットを回して受け取る. 回せる状態でなければ nil.
     ///
-    /// 出る額は「0 になった日時」から決まっているので, 回し直しはできない.
+    /// 出る額は挑戦した瞬間の時刻から決まるので, 回し直しはできない.
     /// 戻り値は当たった額(画面の演出に使う).
     func claimRevivalIfDue() async -> Int? {
         guard let wallet = myWallet, wallet.isRevivalDue() else { return nil }
-        let amount = wallet.revivalAmount
+        let now = Date.now
+        let amount = wallet.revivalAmount(now: now)
         do {
-            myWallet = try await backend.claimChipRevival()
+            myWallet = try await backend.claimChipRevival(now: now)
             return amount
         } catch {
             banner = AppError.wrap(error)
