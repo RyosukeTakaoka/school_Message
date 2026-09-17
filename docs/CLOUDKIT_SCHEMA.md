@@ -162,7 +162,8 @@ recordName: `reaction-<メッセージ>-<ユーザ>`（1 人 1 メッセージ�
 |---|---|---|---|
 | `ownerID` | String | QUERYABLE, SEARCHABLE, SORTABLE | 持ち主（`creatorUserRecordID` と突き合わせて検証） |
 | `balance` | Int(64) | **QUERYABLE, SORTABLE** | 残高。ランキングの並べ替えに使うので索引が必須 |
-| `bankruptAt` | Date/Time | — | CHIP が 0 になった日時（復活日の計算に使う） |
+| `bankruptAt` | Date/Time | — | CHIP が 0 になった日時（最初に挑戦できる日の計算に使う） |
+| `lastRevivalAttemptAt` | Date/Time | — | 最後に復活ルーレットに挑戦した日時（はずれたあとの再挑戦日の計算に使う） |
 | `settledGameIDs` | String（リスト） | — | 精算済みの対戦 ID。二重に増減させないための記録 |
 | `updatedAt` | Date/Time | — | |
 
@@ -174,6 +175,13 @@ CloudKit 予約の `Users` レコードとの衝突を避ける）
 > (`CloudKitBackend+Wallet.swift`)。
 >
 > 書き込めるのは作成者本人だけなので、他人の残高は書き換えられない。
+
+> 復活ルーレットに挑戦できるまでの待ち時間は2段階（`PlayerWallet.swift`）。
+> 0になった日から`bankruptRestDays`（2日）で最初の挑戦ができるようになり、
+> そこではずれても`bankruptAt`は動かさず、`lastRevivalAttemptAt`だけ進める。
+> 以降は`revivalRetryRestDays`（1日）ごとに再挑戦できる。「はずれるたびに
+> また2日待つ」にすると運が悪いだけで長期間CHIPを使えなくなるため、
+> 最初の待機とその後の再挑戦を分けてある。
 > 逆に言えば、各自の端末が自分のぶんだけを反映する仕組みになっている。
 >
 > `bankruptAt` は復活ルーレットの種でもある。出る額は

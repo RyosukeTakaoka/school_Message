@@ -25,17 +25,17 @@ extension CloudKitBackend {
         return Self.wallet(from: saved, ownerID: userID)
     }
 
-    func claimChipRevival() async throws -> PlayerWallet {
+    func claimChipRevival(now: Date) async throws -> PlayerWallet {
         let userID = try await currentUserID()
         var attempt = 0
 
         while true {
             let record = try await fetchOrCreateWalletRecord(for: userID)
             let current = Self.wallet(from: record, ownerID: userID)
-            // まだ回せない(復活日前 / すでに受け取り済み)なら何もしない.
-            guard current.isRevivalDue() else { return current }
+            // まだ回せない(挑戦できる日の前 / すでに受け取り済み)なら何もしない.
+            guard current.isRevivalDue(now: now) else { return current }
 
-            Self.write(current.claimingRevival(), into: record)
+            Self.write(current.claimingRevival(now: now), into: record)
             do {
                 let saved = try await database.save(record)
                 return Self.wallet(from: saved, ownerID: userID)
@@ -182,6 +182,11 @@ extension CloudKitBackend {
         } else {
             record[CKSchema.PlayerWallet.bankruptAt] = nil
         }
+        if let lastRevivalAttemptAt = wallet.lastRevivalAttemptAt {
+            record[CKSchema.PlayerWallet.lastRevivalAttemptAt] = lastRevivalAttemptAt as CKRecordValue
+        } else {
+            record[CKSchema.PlayerWallet.lastRevivalAttemptAt] = nil
+        }
         record[CKSchema.PlayerWallet.settledGameIDs] = wallet.settledGameIDs as CKRecordValue
         record[CKSchema.PlayerWallet.updatedAt] = wallet.updatedAt as CKRecordValue
     }
@@ -191,6 +196,7 @@ extension CloudKitBackend {
             ownerID: ownerID,
             balance: record[CKSchema.PlayerWallet.balance] as? Int ?? PlayerWallet.initialBalance,
             bankruptAt: record[CKSchema.PlayerWallet.bankruptAt] as? Date,
+            lastRevivalAttemptAt: record[CKSchema.PlayerWallet.lastRevivalAttemptAt] as? Date,
             settledGameIDs: record[CKSchema.PlayerWallet.settledGameIDs] as? [String] ?? [],
             updatedAt: record[CKSchema.PlayerWallet.updatedAt] as? Date ?? record.modificationDate ?? .now
         )

@@ -159,10 +159,10 @@ actor InMemoryChatBackend: ChatBackend {
         return updated
     }
 
-    func claimChipRevival() async throws -> PlayerWallet {
+    func claimChipRevival(now: Date) async throws -> PlayerWallet {
         let current = try await fetchMyWallet()
-        guard current.isRevivalDue() else { return current }
-        let claimed = current.claimingRevival()
+        guard current.isRevivalDue(now: now) else { return current }
+        let claimed = current.claimingRevival(now: now)
         walletsByUser[me.id] = claimed
         return claimed
     }

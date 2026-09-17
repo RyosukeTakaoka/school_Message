@@ -65,11 +65,11 @@ protocol ChatBackend: Sendable {
     /// `gameID` を渡すと, 同じ対戦で二重に増減しないよう記録される.
     func applyChipDelta(_ delta: Int, gameID: String?) async throws -> PlayerWallet
 
-    /// 復活のルーレットを回して受け取る(復活日を過ぎているときだけ効く).
+    /// 復活のルーレットを回して受け取る(挑戦できる日を過ぎているときだけ効く).
     ///
-    /// 出る額は「持ち主 + 0 になった日時」から決まるので, 何度呼んでも
-    /// 同じ結果になる(引き直しはできない).
-    func claimChipRevival() async throws -> PlayerWallet
+    /// `now` は呼び出し側が挑戦時に一度だけ決める時刻. 出る額はこの `now` から
+    /// 決まるので, 同じ `now` を渡す限り何度呼んでも同じ結果になる(引き直しはできない).
+    func claimChipRevival(now: Date) async throws -> PlayerWallet
 
     /// CHIP ランキング(残高の多い順).
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry]

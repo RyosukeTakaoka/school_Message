@@ -50,8 +50,10 @@ enum CKSchema {
         static let ownerID = "ownerID"
         /// 残高. ランキングで並べ替えるため QUERYABLE / SORTABLE が要る.
         static let balance = "balance"
-        /// CHIP が 0 になった日時(復活日の計算に使う).
+        /// CHIP が 0 になった日時(最初に挑戦できる日の計算に使う).
         static let bankruptAt = "bankruptAt"
+        /// 最後に復活ルーレットに挑戦した日時(はずれたあとの再挑戦日の計算に使う).
+        static let lastRevivalAttemptAt = "lastRevivalAttemptAt"
         /// 精算済みの対戦 ID(二重に増減させないための記録).
         static let settledGameIDs = "settledGameIDs"
         static let updatedAt = "updatedAt"
