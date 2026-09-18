@@ -519,6 +519,14 @@ struct HorseRaceView: View {
         let bets: [HorseRaceBet]
         /// 払い戻しの合計. まだ出してはいけない間は nil.
         let payout: Int?
+        /// 賭けた額の合計.
+        let stake: Int
+        /// 収支(払い戻し − 賭けた額). まだ出してはいけない間は nil.
+        ///
+        /// 払い戻しが多い人ほど勝っているとは限らない(たくさん賭けて外れれば
+        /// 収支はマイナスになる)ので, ランキングは払い戻しの額そのものではなく
+        /// ここで並べる.
+        var net: Int? { payout.map { $0 - stake } }
     }
 
     /// 締切後に, 誰が何を買ったかを名前付きで出す.
@@ -537,10 +545,10 @@ struct HorseRaceView: View {
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
                         Spacer(minLength: 0)
-                        if let payout = entry.payout {
-                            Text(payout > 0 ? "払戻 \(payout)" : "払戻なし")
+                        if let net = entry.net {
+                            Text(net > 0 ? "収支 +\(net)" : "収支 \(net)")
                                 .font(.caption.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(payout > 0 ? .green : Palette.subdued)
+                                .foregroundStyle(net > 0 ? .green : (net < 0 ? Palette.failure : Palette.subdued))
                         }
                     }
 
@@ -567,6 +575,10 @@ struct HorseRaceView: View {
     ///
     /// レースが終わるまでは名前順で, 払い戻しも伏せる. 並べ替えを先にすると,
     /// 走り終える前に誰が当てたのかが順番から分かってしまうため.
+    ///
+    /// 決着後は払い戻しの額そのものではなく**収支**(払い戻し − 賭けた額)の
+    /// 多い順に並べる. 払い戻しだけで比べると, たくさん賭けて外れた人より
+    /// 少額を的中させただけの人のほうが下に見えてしまうことがあるため.
     private func predictions(_ state: HorseRaceState) -> [Predictions] {
         let decidedRun = state.run.flatMap { isPayoutDecided($0) ? $0 : nil }
 
@@ -576,14 +588,15 @@ struct HorseRaceView: View {
                     id: bettorID,
                     name: store.displayName(for: bettorID),
                     bets: bets.sorted { $0.createdAt < $1.createdAt },
-                    payout: decidedRun.map { $0.totalPayout(for: bets) }
+                    payout: decidedRun.map { $0.totalPayout(for: bets) },
+                    stake: bets.reduce(0) { $0 + $1.amount }
                 )
             }
 
         guard decidedRun != nil else { return entries.sorted { $0.name < $1.name } }
         return entries.sorted { lhs, rhs in
-            let left = lhs.payout ?? 0
-            let right = rhs.payout ?? 0
+            let left = lhs.net ?? 0
+            let right = rhs.net ?? 0
             if left != right { return left > right }
             return lhs.name < rhs.name
         }
@@ -600,10 +613,18 @@ struct HorseRaceView: View {
         let raceID = HorseRaceSchedule.currentRaceID()
         let loaded = await store.loadHorseRace(raceID: raceID)
 
-        // 結果が出たところを初めて見たときだけ, 走りを最初から見せる.
-        let isNewResult = loaded.run != nil && state?.run == nil
+        // 結果が出たところを, この端末でまだ一度も自動再生していないときだけ,
+        // 走りを最初から見せる. すでに見たことがあるレースを開き直したときは
+        // 結果だけを出し, 見返したい場合は「もう一度見る」ボタンに任せる
+        // (`HorseRaceWatchState` 参照).
+        let isNewResult = loaded.run != nil
+            && state?.run == nil
+            && !HorseRaceWatchState.hasAutoPlayed(raceID: loaded.raceID)
         state = loaded
-        if isNewResult, let run = loaded.run { startRun(run) }
+        if isNewResult, let run = loaded.run {
+            startRun(run)
+            HorseRaceWatchState.markAutoPlayed(raceID: loaded.raceID)
+        }
     }
 
     private func buy(_ state: HorseRaceState) async {

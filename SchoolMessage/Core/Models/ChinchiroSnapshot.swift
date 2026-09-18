@@ -51,6 +51,9 @@ enum ChinchiroHand: Hashable, Sendable, Codable {
     }
 
     /// 強い順の並び(結果一覧の並べ替えと, 総取りする人の判定に使う). 大きいほど強い.
+    ///
+    /// `hifumi`(ヒフミ)は役の中で最弱の特別なハズレで, `noHand`(目無し)
+    /// より弱い(本来のチンチロでもヒフミは目無しより重い負けとして扱われる).
     var strength: Int {
         switch self {
         case .pinzoro: 100
