@@ -17,11 +17,21 @@ extension ChatStore {
         guard !isRefreshingWallet else { return }
         isRefreshingWallet = true
         defer { isRefreshingWallet = false }
+
+        // 取りにいく前の残高を控えておく. 待っている間にこの端末の精算が
+        // 割り込んで書き込むことがあるため(対戦画面を開いた瞬間は, 残高の
+        // 取得と精算が同時に走る), そのぶんを消さないための目印にする.
+        let before = myWallet
         guard let wallet = try? await backend.fetchMyWallet() else { return }
-        // 取りにいっている間に, この端末の精算が先に書き込んでいることがある
-        // (対戦画面を開いた瞬間は, 残高の取得と精算が同時に走る). そのときに
-        // 古い残高で上書きしないよう, 新しいほうを残す.
-        if let myWallet, myWallet.updatedAt > wallet.updatedAt {
+
+        // 「待っている間に手元の残高が変わっていて, しかもそれがサーバから
+        // 読んだものと同じか新しい」ときだけ, 手元を残す.
+        //
+        // 以前は `before` を見ずに時刻だけで比べていた. `updatedAt` は
+        // 書き込んだ端末の時計で決まるので, 端末の時計が少しでも進んでいると
+        // 「手元のほうが新しい」と判定され続け, **別の端末で遊んだぶんや
+        // 競馬の払い戻しがいつまでも画面に出てこない**ことがあった.
+        if let current = myWallet, current != before, current.updatedAt >= wallet.updatedAt {
             walletFetchedAt = .now
             return
         }

@@ -51,16 +51,14 @@ struct FriendsView: View {
 
                 Section(String(localized: "友達")) {
                     if store.friends.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("まだ友達がいません。上の検索でユーザIDを入力して追加してください。")
-                                .font(.footnote)
-                                .foregroundStyle(Palette.subdued)
-                            Button {
-                                isShowingInvite = true
-                            } label: {
-                                Label(String(localized: "友達をアプリに招待する"), systemImage: "qrcode")
-                            }
-                            .font(.footnote)
+                        // 「本当に 0 人」と「読み込めなかった」を描き分ける.
+                        // 以前はどちらも同じ文面だったため, iCloud を入れ直した
+                        // 直後に取得へ失敗しただけでも「友達がいません」と出て,
+                        // 友達が消えてしまったように見えていた.
+                        if store.friendsLoadFailed {
+                            friendsLoadFailureRow
+                        } else {
+                            emptyFriendsRow
                         }
                     } else {
                         ForEach(store.friends) { profile in
@@ -91,6 +89,7 @@ struct FriendsView: View {
                     Button(String(localized: "閉じる")) { dismiss() }
                 }
             }
+            .refreshable { await store.refreshFriends() }
             .task {
                 await store.refreshFriends()
             }
@@ -101,6 +100,43 @@ struct FriendsView: View {
     }
 
     // MARK: - 行
+
+    /// 友達がまだ 1 人もいないときの案内.
+    private var emptyFriendsRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("まだ友達がいません。上の検索でユーザIDを入力して追加してください。")
+                .font(.footnote)
+                .foregroundStyle(Palette.subdued)
+            Button {
+                isShowingInvite = true
+            } label: {
+                Label(String(localized: "友達をアプリに招待する"), systemImage: "qrcode")
+            }
+            .font(.footnote)
+        }
+    }
+
+    /// 友達一覧を取得できなかったときの案内.
+    ///
+    /// iCloud にサインインし直した直後は, アカウントの切り替わりが端末に
+    /// 行き渡るまでのあいだ問い合わせが通らないことがある. 「消えた」のでは
+    /// なく「まだ読めていない」ことが分かる文面にし, その場で試し直せるようにする.
+    private var friendsLoadFailureRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(String(localized: "友達一覧を読み込めませんでした"), systemImage: "exclamationmark.triangle")
+                .font(.footnote)
+                .foregroundStyle(Palette.failure)
+            Text("友達が消えたわけではありません。通信の状態と iCloud のサインインを確かめて、もう一度お試しください。")
+                .font(.footnote)
+                .foregroundStyle(Palette.subdued)
+            Button {
+                Task { await store.refreshFriends() }
+            } label: {
+                Label(String(localized: "もう一度読み込む"), systemImage: "arrow.clockwise")
+            }
+            .font(.footnote)
+        }
+    }
 
     private func searchResultRow(_ profile: UserProfile) -> some View {
         HStack {

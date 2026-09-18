@@ -216,6 +216,19 @@ actor CloudKitBackend: ChatBackend {
 
     // MARK: - アカウント
 
+    /// 覚えている「自分が誰か」を捨てる(`ChatBackend.invalidateAccountCache`).
+    ///
+    /// 会話ごとの参加者・作成者の記憶も一緒に捨てる. これらは
+    /// 「いま見えている会話」を前提に貯めたものなので, アカウントが
+    /// 変わったあとも持ち越すと, 前のアカウントで見えていた会話の情報を
+    /// 使い続けることになる.
+    func invalidateAccountCache() async {
+        cachedUserID = nil
+        cachedDisplayName = nil
+        participantCache.removeAll()
+        ownerCache.removeAll()
+    }
+
     func accountStatus() async throws -> BackendAccountStatus {
         let status: CKAccountStatus
         do {
