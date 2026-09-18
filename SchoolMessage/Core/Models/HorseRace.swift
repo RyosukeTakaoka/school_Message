@@ -78,14 +78,33 @@ enum HorseRaceRules {
 /// こうすると主催者を置かずに済み, 出走表も開催日から計算で組み立てられる.
 enum HorseRaceSchedule {
 
+    /// レースの基準タイムゾーン(日本時間で固定).
+    ///
+    /// 以前は `Calendar.current`(端末の設定)をそのまま使っていたため,
+    /// 端末のタイムゾーンや時計が実際とズレていると, 締切前なのに「発走済み」
+    /// と誤判定されることがあった。`HorseRaceResult` は「先に開いた端末が
+    /// 1 件だけ作り, 二度と作り直せない」仕組みなので, 一度でもそう誤判定した
+    /// 端末が開くと, まだ誰も馬券を買っていない空の状態で結果が確定してしまい,
+    /// その日のレースが全員ぶん「賭けても当たっても外れても全額返金されるだけ」
+    /// になってしまう(2026-09-18 のレースで実際に発生した).
+    /// 端末の設定に一切左右されないよう, 日本時間に固定する.
+    static let timeZone = TimeZone(identifier: "Asia/Tokyo")!
+
+    /// レースの日付・時刻計算に使う, 日本時間固定のカレンダー.
+    static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }()
+
     /// 開催日の表記(`2026-09-16`). これがそのままレースの ID になる.
-    static func raceID(for date: Date, calendar: Calendar = .current) -> String? {
+    static func raceID(for date: Date, calendar: Calendar = HorseRaceSchedule.calendar) -> String? {
         guard isRaceDay(date, calendar: calendar) else { return nil }
         return dateFormatter.string(from: date)
     }
 
     /// 平日(月〜金)か. 祝日は考慮しない(学校の予定表は持てないため).
-    static func isRaceDay(_ date: Date, calendar: Calendar = .current) -> Bool {
+    static func isRaceDay(_ date: Date, calendar: Calendar = HorseRaceSchedule.calendar) -> Bool {
         let weekday = calendar.component(.weekday, from: date)
         // 1 = 日曜, 7 = 土曜.
         return weekday != 1 && weekday != 7
@@ -95,7 +114,7 @@ enum HorseRaceSchedule {
     ///
     /// 平日ならその日のレース. 土日なら次の平日のレースを先に見せる
     /// (出走表は開催日から決まるので, 前もって眺められる).
-    static func currentRaceID(now: Date = .now, calendar: Calendar = .current) -> String {
+    static func currentRaceID(now: Date = .now, calendar: Calendar = HorseRaceSchedule.calendar) -> String {
         if isRaceDay(now, calendar: calendar) {
             return dateFormatter.string(from: now)
         }
@@ -114,7 +133,7 @@ enum HorseRaceSchedule {
     static func recentRaceIDs(
         upTo now: Date = .now,
         days: Int = HorseRaceRules.settlementLookbackDays,
-        calendar: Calendar = .current
+        calendar: Calendar = HorseRaceSchedule.calendar
     ) -> [String] {
         var results: [String] = []
         var candidate = now
@@ -133,7 +152,7 @@ enum HorseRaceSchedule {
     }
 
     /// 締切時刻(14:55).
-    static func closingTime(raceID: String, calendar: Calendar = .current) -> Date? {
+    static func closingTime(raceID: String, calendar: Calendar = HorseRaceSchedule.calendar) -> Date? {
         guard let day = date(fromRaceID: raceID) else { return nil }
         return calendar.date(
             bySettingHour: HorseRaceRules.closingHour,
@@ -144,7 +163,7 @@ enum HorseRaceSchedule {
     }
 
     /// 発走時刻(15:05).
-    static func postTime(raceID: String, calendar: Calendar = .current) -> Date? {
+    static func postTime(raceID: String, calendar: Calendar = HorseRaceSchedule.calendar) -> Date? {
         guard let day = date(fromRaceID: raceID) else { return nil }
         return calendar.date(
             bySettingHour: HorseRaceRules.postHour,
@@ -164,7 +183,7 @@ enum HorseRaceSchedule {
         case finished
     }
 
-    static func phase(raceID: String, now: Date = .now, calendar: Calendar = .current) -> Phase {
+    static func phase(raceID: String, now: Date = .now, calendar: Calendar = HorseRaceSchedule.calendar) -> Phase {
         guard let closesAt = closingTime(raceID: raceID, calendar: calendar),
               let startsAt = postTime(raceID: raceID, calendar: calendar)
         else { return .finished }
@@ -176,8 +195,9 @@ enum HorseRaceSchedule {
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        // 端末の暦の設定に左右されないよう固定する(ID として使うため).
+        // 端末の暦・タイムゾーンの設定に左右されないよう固定する(ID として使うため).
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
