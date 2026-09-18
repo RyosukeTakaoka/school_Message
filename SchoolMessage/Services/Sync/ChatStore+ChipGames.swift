@@ -9,10 +9,53 @@ extension ChatStore {
 
     // MARK: - 残高
 
+    /// CHIP 残高をサーバから取り直す.
+    ///
+    /// 失敗しても画面にエラーは出さない(古い残高を出したままにする). 取れた
+    /// ときだけ時刻を記録するので, 失敗したときは次の機会にまた取りにいく.
     func refreshWallet() async {
+        guard !isRefreshingWallet else { return }
+        isRefreshingWallet = true
+        defer { isRefreshingWallet = false }
         guard let wallet = try? await backend.fetchMyWallet() else { return }
+        // 取りにいっている間に, この端末の精算が先に書き込んでいることがある
+        // (対戦画面を開いた瞬間は, 残高の取得と精算が同時に走る). そのときに
+        // 古い残高で上書きしないよう, 新しいほうを残す.
+        if let myWallet, myWallet.updatedAt > wallet.updatedAt {
+            walletFetchedAt = .now
+            return
+        }
         myWallet = wallet
+        walletFetchedAt = .now
     }
+
+    /// 手元の残高が古ければ取り直す. 新しければ何もしない.
+    ///
+    /// ## なぜ必要か
+    /// 残高は「起動したときに 1 回取る」だけで, あとはこの端末が自分で当てた
+    /// 増減(`applyChipDelta` の戻り値)しか反映していなかった. そのため
+    ///
+    /// - 別の端末(iPad と iPhone など)で遊んだ
+    /// - 相手が最後の手を打って決着し, 引き落としが相手の端末で起きた
+    /// - 競馬の払い戻しが, ミニゲームの画面を開く前に別経路で入った
+    ///
+    /// といった場合に, **ミニゲームの画面に出る自分の CHIP が古い数字のまま**
+    /// 残っていた(アプリを入れ直すか, ランキングか競馬の画面を開くまで直らない).
+    /// 残高を出す場所(`ChipBalanceBadge`)が表示のたびに呼べるよう, 短い間は
+    /// 問い合わせを省く.
+    func refreshWalletIfStale(now: Date = .now) async {
+        if let walletFetchedAt,
+           now.timeIntervalSince(walletFetchedAt) < AppConstants.Timing.walletRefreshInterval {
+            return
+        }
+        await refreshWallet()
+    }
+
+    /// 残高を一度でも取得できているか.
+    ///
+    /// 取れていないあいだの `chipBalance` は 0 になるが, それは「0 CHIP」では
+    /// なく「まだ分からない」なので, 画面では区別して出す.
+    var isWalletLoaded: Bool { myWallet != nil }
 
     /// いま CHIP を賭けて遊べるか(足りなければ遊べない).
     var canPlayChipGames: Bool {
@@ -152,7 +195,14 @@ extension ChatStore {
 
     /// ベットできるかを確かめる. 足りない・破産中なら理由をバナーに出して false.
     private func assertCanBet(_ bet: Int, maxBet: Int) -> Bool {
-        guard let myWallet else { return false }
+        // 残高がまだ取れていない. 黙って何も起きないと原因が分からないので,
+        // 理由を出しつつ裏で取り直す(起動直後に通信が途切れていた場合など,
+        // 以前はこのまま何度押しても無反応になっていた).
+        guard let myWallet else {
+            banner = .underlying(String(localized: "CHIPの残高を読み込めていません。少し待ってからもう一度お試しください"))
+            Task { await refreshWallet() }
+            return false
+        }
         if myWallet.isBankrupt() {
             banner = .underlying(bankruptNotice ?? String(localized: "いまは CHIP を使う遊びができません"))
             return false
