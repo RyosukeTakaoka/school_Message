@@ -18,8 +18,23 @@ struct HorseRaceState: Sendable {
     var totalBetCount: Int
     /// 種が確定していれば, 再現したレース.
     var run: HorseRaceRun?
-    /// 精算済みの払い戻し額. まだ精算していなければ nil.
+    /// 精算済みの受け取り額. まだ精算していなければ nil.
+    ///
+    /// 「的中した分の払い戻し」と, 締切に間に合わず種の材料に入らなかった
+    /// 馬券の「そのままの返金」を合わせた, 実際に CHIP へ反映された総額
+    /// (`ChatStore.settleHorseRaceIfNeeded` 参照). 以前は払い戻しだけで
+    /// 返金を含んでいなかったため, 画面の表示額と実際の CHIP 残高の増減が
+    /// 食い違っていた.
     var payout: Int?
+    /// 締切に間に合わず, 種の材料(`HorseRaceResult.betIDs`)に入らなかった
+    /// 自分の馬券の ID.
+    ///
+    /// これに入っている馬券は, レースの着順とは関係なく賭けた額がそのまま
+    /// 返ってくる. 画面ではこれを「外れ」ではなく「返金」として区別する
+    /// (`myBetsSection` 参照) — そうしないと, すべての馬券が「外れ」と
+    /// 表示されているのに CHIP は減っていない(または増えている)という,
+    /// 「当たっていないのに増えた」ように見える食い違いが起きる.
+    var refundedBetIDs: Set<String> = []
     /// 公表された種が材料どおりに作られていなかった場合に true.
     /// このときは精算しない(`ChatStore.settleHorseRaceIfNeeded` 参照).
     var isResultUntrusted: Bool = false
@@ -114,6 +129,9 @@ extension ChatStore {
             // 「種そのものが書き換えられた」のか切り分けられる.
             Log.backend.notice("HORSE CONSISTENCY raceID=\(raceID, privacy: .public) isResultUntrusted=\(state.isResultUntrusted, privacy: .public) resultBetIDs=\(result.betIDs.count, privacy: .public) fetchedBets=\(bets.count, privacy: .public)")
             state.run = HorseRaceRun(card: card, seed: result.seed)
+            // 自分の馬券のうち, 種の材料に入らなかった(＝レースの着順とは
+            // 関係なく賭けた額がそのまま返ってくる)ものを, 表示のために覚えておく.
+            state.refundedBetIDs = Set(state.myBets.map(\.id)).subtracting(result.betIDs)
             state.payout = await settleHorseRaceIfNeeded(state: state, result: result)
             Log.backend.notice("HORSE PAYOUT raceID=\(raceID, privacy: .public) payout=\(state.payout.map(String.init) ?? "nil", privacy: .public)")
         } catch {
@@ -244,10 +262,16 @@ extension ChatStore {
         return locked
     }
 
-    /// 自分のぶんだけ CHIP に反映する. 反映した払い戻し額を返す.
+    /// 自分のぶんだけ CHIP に反映する. 反映した総額(払い戻し + 返金)を返す.
     ///
     /// 他人の残高は書き換えられないので, 各自の端末が自分のぶんを反映する
     /// (チャットの中の対戦と同じ考え方).
+    ///
+    /// 戻り値は「的中した分の払い戻し」だけでなく, 種の材料に入らなかった
+    /// 馬券の「そのままの返金」も含めた合計にする. `applyChipDelta` に渡す
+    /// 差分(`delta = payout + refund`)と必ず一致させる — ここが食い違うと,
+    /// 実際の CHIP 残高は正しく増えているのに, 画面の結果表示
+    /// (`ChipResultBanner`)だけが少なく見える(以前の不具合).
     private func settleHorseRaceIfNeeded(state: HorseRaceState, result: HorseRaceResult) async -> Int? {
         let settlementID = Self.horseRaceSettlementID(raceID: state.raceID)
         // 【診断ログ】ここでどの guard に引っかかって nil を返しているかが分かれば,
@@ -277,7 +301,11 @@ extension ChatStore {
 
         if myWallet?.hasSettled(gameID: settlementID) == true {
             // すでに反映済み. 画面に出す額だけ計算し直す.
-            let payout = run.totalPayout(for: state.myBets.filter { result.betIDs.contains($0.id) })
+            // (以前は払い戻し分だけを計算しており, 返金分が抜けていたため,
+            //  再度画面を開き直すと合計が実際の増減より少なく見えていた)
+            let counted = state.myBets.filter { result.betIDs.contains($0.id) }
+            let uncounted = state.myBets.filter { !result.betIDs.contains($0.id) }
+            let payout = run.totalPayout(for: counted) + uncounted.reduce(0) { $0 + $1.amount }
             Log.backend.notice("HORSE SETTLE ALREADY-DONE raceID=\(state.raceID, privacy: .public) displayedPayout=\(payout, privacy: .public)")
             return payout
         }
@@ -298,7 +326,13 @@ extension ChatStore {
             let saved = try await backend.applyChipDelta(delta, gameID: settlementID)
             myWallet = saved
             Log.backend.notice("HORSE CHIP DELTA SUCCESS raceID=\(state.raceID, privacy: .public) newBalance=\(saved.balance, privacy: .public) settledGameIDs=\(saved.settledGameIDs.count, privacy: .public)")
-            return payout
+            // CHIP へ実際に反映したのは `delta`(= payout + refund) であり,
+            // 画面の結果表示もこれと必ず一致させる. ここを `payout` だけに
+            // していたのが「的中していないのに増えた(ように見える)」不具合の
+            // 実体 — 実際には的中せず, 締切に間に合わず種の材料に入らなかった
+            // 馬券が全額返金されていただけなのに, その返金が画面のどこにも
+            // 出ていなかったため, 利用者からは説明のつかない増加に見えていた.
+            return delta
         } catch {
             let description = AppError.wrap(error).localizedDescription
             Log.backend.error("HORSE CHIP DELTA FAILED raceID=\(state.raceID, privacy: .public) gameID=\(settlementID, privacy: .public) error=\(description, privacy: .public)")
