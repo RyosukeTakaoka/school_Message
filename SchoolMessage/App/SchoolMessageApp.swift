@@ -1,4 +1,7 @@
 import SwiftUI
+import Foundation
+import Combine
+import CloudKit
 
 @main
 struct SchoolMessageApp: App {
@@ -34,6 +37,19 @@ struct SchoolMessageApp: App {
                     guard requested else { return }
                     Task { await enterDemoMode() }
                 }
+                // 設定アプリで iCloud をサインアウト / サインインし直したときに
+                // 届く合図. これを見ていなかったため, アプリを起動し直すまで
+                // 「前のアカウントの自分」でデータを探し続けていた
+                // (`ChatStore.handleAccountChange` 参照).
+                .onReceive(
+                    NotificationCenter.default
+                        .publisher(for: .CKAccountChanged)
+                        // この通知は任意のスレッドから飛んでくる. 画面の状態を
+                        // 触るので, 必ずメインスレッドに寄せてから受け取る.
+                        .receive(on: DispatchQueue.main)
+                ) { _ in
+                    Task { await handleAccountChange() }
+                }
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
@@ -67,6 +83,15 @@ struct SchoolMessageApp: App {
         // 許可のダイアログは出ない(許可を求めるのは最初のチャットを開いたとき).
         environment.pushService.registerForRemoteNotifications()
         await environment.store.start()
+    }
+
+    /// iCloud アカウントが切り替わったときに, セッションを作り直す.
+    ///
+    /// 同意前は通信を始めない(`startIfConsented` と同じ考え方)ので,
+    /// 同意していない間は何もしない.
+    private func handleAccountChange() async {
+        guard !AppConstants.Legal.requiresConsent || environment.consent.hasAgreedToCurrentVersion else { return }
+        await environment.store.handleAccountChange()
     }
 
     /// バックエンドをサンプルデータ入りのインメモリ実装に差し替える.

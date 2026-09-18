@@ -23,6 +23,12 @@ struct HorseRaceState: Sendable {
     /// 公表された種が材料どおりに作られていなかった場合に true.
     /// このときは精算しない(`ChatStore.settleHorseRaceIfNeeded` 参照).
     var isResultUntrusted: Bool = false
+    /// 馬券の一覧をサーバから取れたか.
+    ///
+    /// 取れなかったときも `myBets` は空になるが, それは「買っていない」では
+    /// なく「まだ分からない」なので, 呼び出し側が区別できるようにしておく
+    /// (`ChatStore.settleRecentHorseRaces` 参照).
+    var didLoadBets: Bool = false
 
     /// 自分が賭けた合計.
     var myTotalStake: Int { myBets.reduce(0) { $0 + $1.amount } }
@@ -57,6 +63,7 @@ extension ChatStore {
             return state
         }
 
+        state.didLoadBets = true
         state.totalBetCount = bets.count
         if let me = currentUserID {
             state.myBets = bets.filter { $0.bettorID == me }
@@ -182,7 +189,14 @@ extension ChatStore {
             let state = await loadHorseRace(raceID: raceID, now: now)
             // 馬券が無ければ, この先も精算するものは出てこない(確定後のレースは
             // 変わらないため). 開いている間の繰り返しを止める.
-            if state.myBets.isEmpty { checkedHorseRaceIDs.insert(raceID) }
+            //
+            // ただし **取得に成功したときだけ** 止める. 以前は通信に失敗した
+            // ときも `myBets` が空になるためここで「確かめ済み」に入れてしまい,
+            // 電波が悪かった 1 回のせいで, アプリを起動し直すまでその開催日の
+            // 払い戻しが二度と入らなくなっていた(CHIP が増えない原因の一つ).
+            if state.didLoadBets, state.myBets.isEmpty {
+                checkedHorseRaceIDs.insert(raceID)
+            }
         }
     }
 

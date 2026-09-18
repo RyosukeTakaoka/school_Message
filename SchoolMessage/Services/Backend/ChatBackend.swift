@@ -40,6 +40,21 @@ protocol ChatBackend: Sendable {
 
     func accountStatus() async throws -> BackendAccountStatus
 
+    /// 端末の iCloud アカウントが切り替わったときに, 手元に覚えている
+    /// 「自分が誰か」を捨てる.
+    ///
+    /// ## なぜ必要か
+    /// サインイン中のユーザ ID は, 問い合わせを減らすためにバックエンド側で
+    /// 覚えている. ところが利用者が **設定アプリで iCloud をサインアウト →
+    /// 別のアカウントでサインイン** しても, アプリを起動し直さない限り
+    /// この記憶は古いままだった. その結果, 友達一覧(`ownerID == 自分`)も
+    /// CHIP の財布(`wallet-<自分>`)も**前のアカウントの ID**で探しにいき,
+    /// 「友達が 1 人もいない」「CHIP が増えない」ように見えていた.
+    ///
+    /// `CKAccountChanged` を受け取ったところで呼び, 次の問い合わせで
+    /// 必ず iCloud に本当の ID を訊き直させる.
+    func invalidateAccountCache() async
+
     /// 自分のプロフィール. 未登録なら nil.
     func fetchMyProfile() async throws -> UserProfile?
 

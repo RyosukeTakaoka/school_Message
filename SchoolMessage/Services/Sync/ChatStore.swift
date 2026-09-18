@@ -27,6 +27,14 @@ final class ChatStore {
     private(set) var myProfile: UserProfile?
     var conversations: [Conversation] = []
     private(set) var friends: [UserProfile] = []
+    /// 友達一覧の取得に失敗したまま, 一度も中身を持てていないか.
+    ///
+    /// 以前は取得に失敗してもログに出すだけで, 画面には空の一覧がそのまま
+    /// 出ていた. その結果「iCloud を入れ直した直後で問い合わせが通らなかった」
+    /// だけなのに, 友達画面には **「まだ友達がいません」** と表示され,
+    /// 本当に消えてしまったのか通信に失敗しただけなのか区別が付かなかった.
+    /// 画面がこの 2 つを描き分けられるよう, 失敗を状態として残す.
+    private(set) var friendsLoadFailed = false
     /// 取得済みユーザの索引. 拡張からも書き込むため setter を絞っていない.
     var profilesByID: [UserID: UserProfile] = [:]
     /// 自分の CHIP 残高. 取得できるまでは nil(`ChatStore+ChipGames.swift` が更新する).
@@ -113,6 +121,8 @@ final class ChatStore {
     @ObservationIgnored var walletFetchedAt: Date?
     /// 残高の取得中. 同じ問い合わせが重なるのを防ぐ.
     @ObservationIgnored var isRefreshingWallet = false
+    /// アカウント切り替えのやり直し中. 同じ合図が続けて届いても 1 回で済ませる.
+    @ObservationIgnored private var isRestartingForAccountChange = false
 
     // 画面が観測する必要のない内部状態は追跡対象から外す.
     @ObservationIgnored private var eventTask: Task<Void, Never>?
@@ -279,15 +289,60 @@ final class ChatStore {
         eventTask?.cancel()
         pollTask?.cancel()
         await crypto.clearCachedConversationKeys()
+        clearSignedInState()
+        phase = .needsRegistration
+    }
+
+    /// 端末の iCloud アカウントが切り替わったときに呼ぶ.
+    ///
+    /// ## 直している不具合
+    /// 設定アプリで **iCloud をサインアウト → もう一度サインイン** しても,
+    /// アプリ側は起動時に調べた「自分が誰か」を持ったままだった
+    /// (`CloudKitBackend` がユーザ ID を覚えている). その状態では
+    ///
+    /// - 友達一覧は `ownerID == 古いユーザID` で探すので **0 件**
+    /// - CHIP の財布も `wallet-<古いユーザID>` を読み書きするので **増えも減りもしない**
+    ///
+    /// となり, 「サインインし直したら友達がいなくなった」「競馬で当たったのに
+    /// CHIP が変わらない」という形で表に出ていた. しかも友達一覧の取得失敗は
+    /// ログに出るだけだったので, 画面には理由の分からない空の一覧が残っていた.
+    ///
+    /// `CKAccountChanged` を受け取ったら, 手元の状態もバックエンドの記憶も
+    /// 全部捨てて, 起動直後と同じところからやり直す.
+    func handleAccountChange() async {
+        // サインアウト → サインインの一連の操作では合図が続けて届くことがある.
+        // やり直しの最中にもう一度始めると, 起動処理が二重に走ってしまう.
+        guard !isRestartingForAccountChange else { return }
+        isRestartingForAccountChange = true
+        defer { isRestartingForAccountChange = false }
+
+        Log.sync.notice("iCloud account changed; restarting session")
+        stop()
+        await backend.invalidateAccountCache()
+        await crypto.clearCachedConversationKeys()
+        clearSignedInState()
+        phase = .launching
+        await start()
+    }
+
+    /// サインインしている人に紐づく手元のデータを空にする.
+    private func clearSignedInState() {
         myProfile = nil
         myWallet = nil
         walletFetchedAt = nil
         conversations = []
         friends = []
+        friendsLoadFailed = false
         messagesByConversation = [:]
+        hasMoreHistory = []
+        loadingConversationIDs = []
+        reactionsByConversation = [:]
         profilesByID = [:]
         selectedConversationID = nil
-        phase = .needsRegistration
+        boardUnreadCount = 0
+        // 前のアカウントで「精算するものが無い」と判断した記録は持ち越さない
+        // (人が変われば, 同じ開催日でも買っている馬券が違う).
+        checkedHorseRaceIDs = []
     }
 
     // MARK: - 変更の購読
@@ -350,6 +405,12 @@ final class ChatStore {
                 if Date.now.timeIntervalSince(lastListRefresh) >= AppConstants.Timing.fallbackPollInterval {
                     lastListRefresh = .now
                     await self.refreshConversations()
+                    // 友達一覧の取得に失敗したままなら, ここで拾い直す.
+                    // (成功していれば, 友達が増えるのは自分の操作のときだけなので
+                    //  毎回問い合わせる必要はない)
+                    if self.friendsLoadFailed {
+                        await self.refreshFriends()
+                    }
                 }
 
                 // アプリを開いたままにしていると前面復帰の合図が来ないため,
@@ -379,6 +440,10 @@ final class ChatStore {
                 await self.markSelectedConversationRead()
             }
             self.flushOutbox()
+            // 友達一覧も取り直す. 起動時の 1 回きりだったため, そのときに
+            // 通信が失敗していると(iCloud を入れ直した直後など), 友達画面を
+            // 開き直すまで空のままだった.
+            await self.refreshFriends()
             // 前回の精算が通信の失敗などで漏れていた場合に, ここで拾い直す.
             await self.settleFinishedChipGames()
             // 競馬も同様. アプリを再起動しない限り, 前面に戻すだけでは
@@ -435,16 +500,25 @@ final class ChatStore {
         }
     }
 
+    /// 友達一覧を取り直す.
+    ///
+    /// 失敗しても手元の一覧は消さない(通信が一度失敗しただけで, 画面から
+    /// 友達が消えてしまわないように). 代わりに `friendsLoadFailed` を立てて,
+    /// 画面が「0 人」と「読み込めなかった」を描き分けられるようにする.
     func refreshFriends() async {
         guard phase == .ready else { return }
         do {
             let fetched = try await backend.fetchFriends()
             friends = fetched
+            friendsLoadFailed = false
             for profile in fetched {
                 profilesByID[profile.id] = profile
             }
         } catch {
-            Log.sync.notice("could not refresh friends")
+            friendsLoadFailed = true
+            Log.sync.notice(
+                "could not refresh friends: \(AppError.wrap(error).localizedDescription, privacy: .public)"
+            )
         }
     }
 

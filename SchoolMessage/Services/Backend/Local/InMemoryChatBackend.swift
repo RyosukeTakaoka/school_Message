@@ -110,6 +110,9 @@ actor InMemoryChatBackend: ChatBackend {
 
     func accountStatus() async throws -> BackendAccountStatus { .available(me.id) }
 
+    /// この実装は iCloud を使わないので, 捨てる記憶が無い.
+    func invalidateAccountCache() async {}
+
     func fetchMyProfile() async throws -> UserProfile? { me }
 
     func registerProfile(handle: String, displayName: String, avatarData: Data?) async throws -> UserProfile {
