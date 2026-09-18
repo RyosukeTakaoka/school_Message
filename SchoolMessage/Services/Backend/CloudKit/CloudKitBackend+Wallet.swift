@@ -80,6 +80,24 @@ extension CloudKitBackend {
         }
     }
 
+    /// CHIP ランキングを組み立てる.
+    ///
+    /// ## 以前の実装の問題(取りこぼし)
+    /// 「遊んだかどうか」は CloudKit の検索条件(`NSPredicate`)には書けない
+    /// フィールド(`settledGameIDs` が空かどうか)なので, 以前は
+    /// 「残高の高い順に `limit * 3` 件だけ先に取ってから, 遊んでいない人を
+    /// あとで除く」という作りだった.
+    ///
+    /// これだと, 配られたままの初期値(1,000 CHIP)で止まっている**未プレイの
+    /// 人**が `limit * 3` 人より多くいると, 実際に遊んで**負けて残高が
+    /// 1,000 を下回った人**は全員その未プレイの塊より下に並ぶことになり,
+    /// 最初に取ってきた分の中に一度も入らないまま「遊んでいない人」と
+    /// 一緒に切り捨てられてしまう. 本人の CHIP はサーバ側で正しく精算
+    /// されているのに, ランキングにだけ永久に出てこない, という不具合になる.
+    ///
+    /// ここでは, 残高の高い順にページを読み進めながらその場で選別し,
+    /// 「実際に遊んだ人」が `limit` 人集まるか, 読める分をすべて読み終える
+    /// までページを取り続ける.
     func fetchChipRanking(limit: Int) async throws -> [ChipRankingEntry] {
         let me = try await currentUserID()
 
@@ -93,29 +111,67 @@ extension CloudKitBackend {
             NSSortDescriptor(key: CKSchema.PlayerWallet.balance, ascending: false)
         ]
 
-        // 1 回も遊んでいない人をあとで外すので, その分だけ多めに取っておく
-        // (「遊んだかどうか」は CloudKit の検索条件では書けないため).
-        let records = try await queryWithRetry(query, limit: min(limit * 3, Self.rankingFetchLimit))
+        var entries: [ChipRankingEntry] = []
+        var cursor: CKQueryOperation.Cursor?
+        var scanned = 0
+        var attempt = 0
+        let pageSize = min(max(limit, 1) * 3, CKQueryOperation.maximumResults)
 
-        let entries: [ChipRankingEntry] = records.compactMap { record in
-            guard let ownerRaw = record[CKSchema.PlayerWallet.ownerID] as? String else { return nil }
-            // なりすまし対策. 他人ぶんの財布を勝手に作られても採用しない.
-            guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == ownerRaw else {
-                Log.backend.notice("ignoring wallet with mismatched creator")
-                return nil
+        pagingLoop: while true {
+            let page: (matchResults: [(CKRecord.ID, Result<CKRecord, any Error>)], queryCursor: CKQueryOperation.Cursor?)
+            do {
+                if let cursor {
+                    page = try await database.records(continuingMatchFrom: cursor, resultsLimit: pageSize)
+                } else {
+                    page = try await database.records(matching: query, resultsLimit: pageSize)
+                }
+            } catch {
+                // レコード型がまだ CloudKit のスキーマに一度も存在しない
+                // (＝誰も CHIP を触ったことがない)場合はここに来る. 0 件として扱う.
+                guard !CloudKitErrorMapping.isUnknownItem(error) else { break pagingLoop }
+
+                let appError = CloudKitErrorMapping.appError(from: error)
+                attempt += 1
+                guard appError.isRetryable, attempt < AppConstants.Timing.maxRetryAttempts else {
+                    throw appError
+                }
+                let delay = appError.suggestedRetryDelay
+                    ?? AsyncRetry.backoffDelay(attempt: attempt, baseDelay: AppConstants.Timing.retryBaseDelay)
+                try await Task.sleep(for: .seconds(delay))
+                continue pagingLoop  // cursor は進めていないので, 同じページをもう一度試す.
             }
-            let playedGameIDs = record[CKSchema.PlayerWallet.settledGameIDs] as? [String] ?? []
-            // 配られたままの 1,000 CHIP で並ばれるとおもしろくないので,
-            // 1 回も遊んでいない人はランキングに入れない.
-            guard !playedGameIDs.isEmpty else { return nil }
+            attempt = 0
 
-            return ChipRankingEntry(
-                ownerID: UserID(ownerRaw),
-                balance: record[CKSchema.PlayerWallet.balance] as? Int ?? 0,
-                playedGameCount: playedGameIDs.count,
-                updatedAt: record[CKSchema.PlayerWallet.updatedAt] as? Date ?? record.modificationDate ?? .now
-            )
+            for (_, result) in page.matchResults {
+                scanned += 1
+                guard case .success(let record) = result else { continue }
+                guard let ownerRaw = record[CKSchema.PlayerWallet.ownerID] as? String else { continue }
+                // なりすまし対策. 他人ぶんの財布を勝手に作られても採用しない.
+                guard CloudKitMapper.resolvedCreatorName(of: record, currentUserID: me) == ownerRaw else {
+                    Log.backend.notice("ignoring wallet with mismatched creator")
+                    continue
+                }
+                let playedGameIDs = record[CKSchema.PlayerWallet.settledGameIDs] as? [String] ?? []
+                // 配られたままの 1,000 CHIP で並ばれるとおもしろくないので,
+                // 1 回も遊んでいない人はランキングに入れない.
+                guard !playedGameIDs.isEmpty else { continue }
+
+                entries.append(
+                    ChipRankingEntry(
+                        ownerID: UserID(ownerRaw),
+                        balance: record[CKSchema.PlayerWallet.balance] as? Int ?? 0,
+                        playedGameCount: playedGameIDs.count,
+                        updatedAt: record[CKSchema.PlayerWallet.updatedAt] as? Date ?? record.modificationDate ?? .now
+                    )
+                )
+            }
+
+            cursor = page.queryCursor
+            // 欲しい人数が集まった / これ以上ページが無い / 読みすぎを防ぐ上限に
+            // 達した, のいずれかで打ち切る.
+            guard cursor != nil, entries.count < limit, scanned < Self.rankingScanLimit else { break pagingLoop }
         }
+
         return Array(entries.prefix(limit))
     }
 
@@ -146,8 +202,12 @@ extension CloudKitBackend {
         return balances
     }
 
-    /// ランキングを組み立てるときに, 1 度に取ってくるレコード数の上限.
-    private static var rankingFetchLimit: Int { 200 }
+    /// ランキングを組み立てるとき, ページを読み進めて調べる財布の総数の上限.
+    ///
+    /// 「遊んだ人」がなかなか集まらない場合(未プレイの人がとても多い等)に,
+    /// 際限なくページを読み続けないための保険. 学校 1 クラス〜数クラス分の
+    /// 利用者数であれば, 全員を読み切ってなお足りる余裕のある値にしてある.
+    private static var rankingScanLimit: Int { 2000 }
 
     // MARK: - 内部
 
