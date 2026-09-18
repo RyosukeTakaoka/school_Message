@@ -421,6 +421,12 @@ struct MessageBubbleView: View {
             bet: state.bet,
             isLobby: state.lobby != nil
         )
+        case .bust(let state): return chipGameStatusText(
+            isFinished: state.isFinished,
+            playerCount: state.playerIDs.count,
+            bet: state.bet,
+            isLobby: state.lobby != nil
+        )
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// CHIP を使う 4 つの遊び(インディアンポーカー・ダウト・ブラックジャック・チンチロ)と,
+/// CHIP を使う 5 つの遊び(インディアンポーカー・ダウト・ブラックジャック・チンチロ・BUST)と,
 /// その精算.
 ///
 /// 1 手 = 1 メッセージという既存の仕組みはそのまま使う(`sendGameMove`).
@@ -163,22 +163,41 @@ extension ChatStore {
         let cutoff = now.addingTimeInterval(-Self.chipSettlementLookback)
 
         // 1 つの対戦は手を進めるたびにメッセージが増えるので, 同じ対戦 ID は
-        // 新しい状態で上書きして, 最後の状態だけを見る.
+        // 新しい状態で上書きして, 最後の状態だけを見る. ただしインディアン
+        // ポーカーや BUST のように複数人がほぼ同時に手を進める遊びだけは,
+        // 最後の 1 通だけでは他の人の分がまだ反映されていないことがあるので,
+        // 同じ対戦 ID のメッセージを全部集めて畳み込む(`mergingConcurrentMoves`
+        // 参照). それ以外の遊びまで全部集めてしまうと, 何日ぶんもの対戦の
+        // 中間状態をここに溜め込むことになり無駄が大きいので, 対象を絞る.
         var latestByGameID: [String: GameSnapshot] = [:]
+        var concurrentCandidatesByGameID: [String: [GameSnapshot]] = [:]
         for messages in messagesByConversation.values {
             for message in messages where message.createdAt >= cutoff && !message.isUnsent {
-                guard let game = message.content.game,
-                      game.isFinished,
-                      !game.isCancelled,
-                      game.chipDeltas[me] != nil
-                else { continue }
-                latestByGameID[game.gameID] = game
+                guard let game = message.content.game, !game.isCancelled else { continue }
+                let isConcurrentKind = game.kind == .indianPoker || game.kind == .bust
+                if isConcurrentKind {
+                    // 畳み込んで初めて isFinished / 自分の取り分が定まることが
+                    // あるので, ここでは絞り込まずに候補として残しておく.
+                    latestByGameID[game.gameID] = game
+                    concurrentCandidatesByGameID[game.gameID, default: []].append(game)
+                } else {
+                    // それ以外の遊びは畳み込みで後から isFinished に変わる
+                    // ことが無いので, 決着していない・自分に関係ない中間状態は
+                    // ここで捨てて(以前と同じく)ダイクショナリを膨らませない.
+                    guard game.isFinished, game.chipDeltas[me] != nil else { continue }
+                    latestByGameID[game.gameID] = game
+                }
             }
         }
 
-        for game in latestByGameID.values {
+        for (gameID, last) in latestByGameID {
             // 二重に精算しない. 端末をまたいだ判定は `applyChipDelta` 側でも行う.
-            guard myWallet?.hasSettled(gameID: game.gameID) != true else { continue }
+            guard myWallet?.hasSettled(gameID: gameID) != true else { continue }
+            let game = Self.mergingConcurrentMoves(
+                last: last,
+                candidates: concurrentCandidatesByGameID[gameID] ?? [last]
+            )
+            guard game.isFinished, game.chipDeltas[me] != nil else { continue }
             await settleChipsIfNeeded(for: game)
         }
     }
@@ -535,5 +554,98 @@ extension ChatStore {
         else { return }
         await sendGameMove(.chinchiro(next), in: conversationID)
         await settleChipsIfNeeded(for: .chinchiro(next))
+    }
+
+    // MARK: - BUST
+
+    func createBustLobby(bet: Int, in conversationID: ConversationID) async {
+        guard let me = currentUserID, assertCanBet(bet, maxBet: BustSnapshot.maxBet) else { return }
+        await sendGameMove(.bust(.newLobby(hostID: me, bet: bet)), in: conversationID)
+    }
+
+    func joinBust(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .bust, in: conversationID)?.bust,
+              var lobby = snapshot.lobby,
+              !lobby.joinedPlayerIDs.contains(me)
+        else { return }
+        // ここだけ, 他の CHIP ゲームには無い「満員」という失敗理由があるので,
+        // 黙って何も起きないと原因が分からない(`assertCanBet` と同じ考え方).
+        guard lobby.joinedPlayerIDs.count < BustSnapshot.maximumPlayers else {
+            banner = .underlying(String(localized: "満員です(最大\(BustSnapshot.maximumPlayers)人)"))
+            return
+        }
+        guard assertCanBet(lobby.bet, maxBet: BustSnapshot.maxBet) else { return }
+        lobby.joinedPlayerIDs.append(me)
+        var next = snapshot
+        next.phase = .lobby(lobby)
+        await sendGameMove(.bust(next), in: conversationID)
+    }
+
+    func startBust(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .bust, in: conversationID)?.bust,
+              let lobby = snapshot.lobby,
+              me == snapshot.hostID,
+              lobby.joinedPlayerIDs.count >= BustSnapshot.minimumPlayers
+        else { return }
+        guard await assertEveryoneCanPay(lobby.joinedPlayerIDs, bet: lobby.bet) else { return }
+        var next = snapshot
+        next.phase = .playing(
+            BustSnapshot.Round(
+                playerIDs: lobby.joinedPlayerIDs,
+                bet: lobby.bet,
+                startedAt: .now,
+                startSeed: .random(in: UInt64.min...UInt64.max),
+                stops: [:]
+            )
+        )
+        await sendGameMove(.bust(next), in: conversationID)
+    }
+
+    /// STOP する. 確定する倍率は, 押した本人の端末が「いま何倍か」から計算する.
+    func stopBust(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .bust, in: conversationID)?.bust,
+              let next = snapshot.stopping(by: me)
+        else { return }
+        await sendGameMove(.bust(next), in: conversationID)
+        await settleChipsIfNeeded(for: .bust(next))
+    }
+
+    /// クラッシュ済みなのに, まだ誰も新しいメッセージを送っていない対戦を精算する.
+    ///
+    /// BUST は「時間が経つだけで決着する」唯一の CHIP ゲームなので,
+    /// (他の対戦のように)必ず誰かが最後の一手を送るとは限らない
+    /// (例: 最後まで粘っていた 1 人がそのままアプリを閉じてしまった場合)。
+    /// 対戦画面を開いている間, 一定間隔でこれを呼んで拾う.
+    func settleBustIfCrashed(in conversationID: ConversationID) async {
+        guard let snapshot = currentGame(kind: .bust, in: conversationID)?.bust,
+              snapshot.isFinished
+        else { return }
+
+        // BUST した人(STOP しないまま時間切れで脱落した人)がいる決着は,
+        // その事実を伝えるメッセージが 1 通も無いことがある(BUST した本人は
+        // 何も操作しないため)。そのままだとチャット一覧のプレビューが
+        // 「対戦中」のまま固まってしまうので, 決着した状態を 1 通だけ
+        // 書き残す. 全員が自分の意思で STOP した決着は, 最後に STOP した人が
+        // すでに決着後の状態を送っているので, ここでは送らない
+        // (毎回送ると同じ結果のメッセージが重複してしまう).
+        if !snapshot.bustedPlayerIDs.isEmpty {
+            // 複数人が同時に対戦画面を開いていると, それぞれがここに来て
+            // 同じ決着メッセージを送ろうとしてしまう. ランダムに少し待ってから
+            // もう一度確かめ, その間に誰か(他の端末)がもう書き残していれば
+            // 送らない(完全な重複排除ではないが, 実際の同期の速さを考えれば
+            // 実用上は十分減らせる).
+            let jitterMilliseconds = Int.random(in: 200...1500)
+            try? await Task.sleep(for: .milliseconds(jitterMilliseconds))
+            let alreadyPosted = (messagesByConversation[conversationID] ?? [])
+                .last { $0.content.game?.kind == .bust && $0.content.game?.gameID == snapshot.gameID }?
+                .content.game == .bust(snapshot)
+            if !alreadyPosted {
+                await sendGameMove(.bust(snapshot), in: conversationID)
+            }
+        }
+        await settleChipsIfNeeded(for: .bust(snapshot))
     }
 }

@@ -175,7 +175,7 @@ struct ChipGameStartPrompt: View {
     }
 }
 
-/// 参加者を募っている間の画面. 4 つの遊びで共通.
+/// 参加者を募っている間の画面. 5 つの遊びで共通.
 struct ChipGameLobbySection: View {
 
     @Environment(AppEnvironment.self) private var environment
@@ -189,11 +189,17 @@ struct ChipGameLobbySection: View {
     /// 募集した人が募集ごと取りやめる. 始まる前だけ呼べる.
     let onCancel: (() -> Void)?
     let onStart: () -> Void
+    /// これ以上参加できない上限人数. 上限が無い遊びは nil(既定).
+    var maximumPlayers: Int? = nil
 
     private var store: ChatStore { environment.store }
     private var me: UserID? { store.currentUserID }
     private var hasJoined: Bool { me.map(lobby.joinedPlayerIDs.contains) ?? false }
     private var isHost: Bool { me == hostID }
+    private var isFull: Bool {
+        guard let maximumPlayers else { return false }
+        return lobby.joinedPlayerIDs.count >= maximumPlayers
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppConstants.Layout.standardSpacing) {
@@ -224,6 +230,10 @@ struct ChipGameLobbySection: View {
                 Text("あと \(kind.minimumPlayers - lobby.joinedPlayerIDs.count) 人以上参加すると始められます")
                     .font(.caption)
                     .foregroundStyle(Palette.subdued)
+            } else if let maximumPlayers, isFull {
+                Text("満員です(最大\(maximumPlayers)人)")
+                    .font(.caption)
+                    .foregroundStyle(Palette.subdued)
             }
 
             if let notice = store.bankruptNotice, !hasJoined {
@@ -237,7 +247,7 @@ struct ChipGameLobbySection: View {
                 if !hasJoined {
                     Button(String(localized: "参加する"), action: onJoin)
                         .buttonStyle(.borderedProminent)
-                        .disabled(isSending || store.chipBalance < lobby.bet || !store.canPlayChipGames)
+                        .disabled(isSending || isFull || store.chipBalance < lobby.bet || !store.canPlayChipGames)
                 } else if !isHost, let onLeave {
                     Button(String(localized: "参加を取りやめる"), role: .destructive, action: onLeave)
                         .buttonStyle(.bordered)
