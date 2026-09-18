@@ -487,10 +487,22 @@ struct HorseRaceView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(Palette.subdued)
                     if let run = state.run, isPayoutDecided(run) {
-                        let payout = run.payout(for: bet)
-                        Text(payout > 0 ? "的中 +\(payout)" : "外れ")
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(payout > 0 ? .green : Palette.subdued)
+                        // 締切に間に合わず種の材料に入らなかった馬券は, 着順に
+                        // 関係なく賭けた額がそのまま返ってくる(`ChatStore.
+                        // settleHorseRaceIfNeeded` 参照). これを「外れ」と
+                        // 一緒くたに出すと, 全ての馬券が「外れ」なのに CHIP は
+                        // 減っていない(または増えている)という, 説明のつかない
+                        // 増加に見えてしまうので, 「返金」として別に表示する.
+                        if state.refundedBetIDs.contains(bet.id) {
+                            Text("返金 +\(bet.amount)")
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(Palette.subdued)
+                        } else {
+                            let payout = run.payout(for: bet)
+                            Text(payout > 0 ? "的中 +\(payout)" : "外れ")
+                                .font(.caption.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(payout > 0 ? .green : Palette.subdued)
+                        }
                     }
                 }
             }
