@@ -104,6 +104,16 @@ final class ChatStore {
     /// 同じ問い合わせを繰り返さないために覚えておく(`ChatStore+HorseRace` 参照).
     @ObservationIgnored var checkedHorseRaceIDs: Set<String> = []
 
+    /// 最後に CHIP 残高をサーバから取り直した時刻. 一度も取れていなければ nil.
+    ///
+    /// 残高(`myWallet`)は「起動時に 1 回取る + この端末が当てた増減を自分で足す」
+    /// だけの持ち方なので, 別の端末で遊んだぶんなどには追いつけない. 画面を
+    /// 開いたときなどに取り直すが, 何度も問い合わせないよう時刻を覚えておく
+    /// (`ChatStore+ChipGames.refreshWalletIfStale` 参照).
+    @ObservationIgnored var walletFetchedAt: Date?
+    /// 残高の取得中. 同じ問い合わせが重なるのを防ぐ.
+    @ObservationIgnored var isRefreshingWallet = false
+
     // 画面が観測する必要のない内部状態は追跡対象から外す.
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var pollTask: Task<Void, Never>?
@@ -271,6 +281,7 @@ final class ChatStore {
         await crypto.clearCachedConversationKeys()
         myProfile = nil
         myWallet = nil
+        walletFetchedAt = nil
         conversations = []
         friends = []
         messagesByConversation = [:]
@@ -348,6 +359,11 @@ final class ChatStore {
                     lastHorseRaceCheck = .now
                     await self.settleRecentHorseRaces()
                 }
+
+                // 自分の CHIP も取り直す. 他の端末で遊んだぶんや, 相手が
+                // 決着させた対戦のぶんは, この端末の計算には出てこないため
+                // (間隔の調整は `refreshWalletIfStale` が自分で行う).
+                await self.refreshWalletIfStale()
             }
         }
     }
@@ -368,6 +384,10 @@ final class ChatStore {
             // 競馬も同様. アプリを再起動しない限り, 前面に戻すだけでは
             // 発走から結果確定までの間に精算されないままだったため.
             await self.settleRecentHorseRaces()
+            // 精算のあとに取り直す. 画面に出している CHIP が, 閉じている間の
+            // 増減(別の端末で遊んだ・競馬の払い戻しが入った)から取り残されて
+            // いたため.
+            await self.refreshWallet()
             await self.refreshBoardUnreadCount()
         }
     }

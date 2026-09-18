@@ -86,6 +86,13 @@ enum AppConstants {
         /// またいでも精算されないままになる. 1 日 1 レースなので短くする必要は無く,
         /// 問い合わせを増やさないよう長めにしてある.
         static let horseRaceSettlementCheckInterval: TimeInterval = 5 * 60
+        /// 手元の CHIP 残高を取り直す間隔.
+        ///
+        /// 画面に出す残高は, この端末が自分で当てた増減しか反映しない
+        /// (`ChatStore.refreshWalletIfStale` 参照). 別の端末で遊んだぶんや,
+        /// 競馬の払い戻しが別経路で入ったぶんに追いつくため, ときどき取り直す.
+        /// レコード 1 件の取得なので, 新着メッセージの取得より軽い.
+        static let walletRefreshInterval: TimeInterval = 60
     }
 
     enum Validation {

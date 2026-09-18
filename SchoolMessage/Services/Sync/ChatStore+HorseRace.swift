@@ -114,7 +114,12 @@ extension ChatStore {
             banner = .underlying(String(localized: "買い目が正しくありません"))
             return false
         }
-        guard let myWallet else { return false }
+        // 残高が未取得のまま黙って終わらせない(`assertCanBet` と同じ扱い).
+        guard let myWallet else {
+            banner = .underlying(String(localized: "CHIPの残高を読み込めていません。少し待ってからもう一度お試しください"))
+            Task { await refreshWallet() }
+            return false
+        }
         if myWallet.isBankrupt() {
             banner = .underlying(bankruptNotice ?? String(localized: "いまは CHIP を使う遊びができません"))
             return false

@@ -22,6 +22,11 @@ enum GameHaptics {
 }
 
 /// 手持ちの CHIP.
+///
+/// 出るたびに残高を取り直す(古ければ). 残高は起動時に 1 回取るだけだったため,
+/// 別の端末で遊んだぶんや, 相手の端末で決着したぶん, 競馬の払い戻しが入った
+/// ぶんに追いつけず, ミニゲームの画面にいつまでも古い数字が出ていた
+/// (`ChatStore.refreshWalletIfStale` 参照).
 struct ChipBalanceBadge: View {
 
     @Environment(AppEnvironment.self) private var environment
@@ -29,17 +34,27 @@ struct ChipBalanceBadge: View {
 
     private var store: ChatStore { environment.store }
 
+    /// まだ取れていないときは 0 と区別する(0 CHIP に見えてしまうため).
+    private var text: String {
+        store.isWalletLoaded ? ChipRules.formatted(store.chipBalance) : "—"
+    }
+
     var body: some View {
         HStack(spacing: 4) {
             Text("🪙")
-            Text(ChipRules.formatted(store.chipBalance))
+            Text(text)
                 .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
                 .monospacedDigit()
         }
         .padding(.horizontal, 10)
         .padding(.vertical, compact ? 3 : 5)
         .background(Palette.incomingBubble, in: Capsule())
-        .accessibilityLabel(String(localized: "持っているCHIP \(store.chipBalance)"))
+        .accessibilityLabel(
+            store.isWalletLoaded
+                ? String(localized: "持っているCHIP \(store.chipBalance)")
+                : String(localized: "持っているCHIP 読み込み中")
+        )
+        .task { await store.refreshWalletIfStale() }
     }
 }
 
