@@ -27,6 +27,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
     case doubt(DoubtSnapshot)
     case blackjack(BlackjackSnapshot)
     case chinchiro(ChinchiroSnapshot)
+    case bust(BustSnapshot)
 
     /// 遊びの種類.
     enum Kind: String, Hashable, Sendable, Codable, Identifiable, CaseIterable {
@@ -37,6 +38,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case doubt
         case blackjack
         case chinchiro
+        case bust
 
         var id: String { rawValue }
 
@@ -49,6 +51,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             case .doubt: String(localized: "ダウト")
             case .blackjack: String(localized: "ブラックジャック")
             case .chinchiro: String(localized: "チンチロ")
+            case .bust: String(localized: "BUST")
             }
         }
 
@@ -61,6 +64,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             case .doubt: "questionmark.app"
             case .blackjack: "suit.club.fill"
             case .chinchiro: "die.face.5"
+            case .bust: "flame.fill"
             }
         }
 
@@ -69,7 +73,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             switch self {
             case .othello, .colorBattle, .indianPoker: [.direct]
             case .daifugo, .doubt: [.group]
-            case .blackjack, .chinchiro: [.direct, .group]
+            case .blackjack, .chinchiro, .bust: [.direct, .group]
             }
         }
 
@@ -86,6 +90,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             case .doubt: DoubtSnapshot.maxBet
             case .blackjack: BlackjackSnapshot.maxBet
             case .chinchiro: ChinchiroSnapshot.maxBet
+            case .bust: BustSnapshot.maxBet
             }
         }
 
@@ -97,6 +102,19 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             case .doubt: DoubtSnapshot.minimumPlayers
             case .blackjack: BlackjackSnapshot.minimumPlayers
             case .chinchiro: ChinchiroSnapshot.minimumPlayers
+            case .bust: BustSnapshot.minimumPlayers
+            }
+        }
+
+        /// 参加できる上限人数. 上限が無い遊びは nil.
+        ///
+        /// BUST だけの特別な制約. 人数が増えるほど「早く STOP した人」が有利に
+        /// なりすぎることがシミュレーションで分かっているため, 上限を設けている
+        /// (`BustSnapshot` のコメント参照)。
+        var maximumPlayers: Int? {
+            switch self {
+            case .othello, .colorBattle, .daifugo, .indianPoker, .doubt, .blackjack, .chinchiro: nil
+            case .bust: BustSnapshot.maximumPlayers
             }
         }
 
@@ -149,6 +167,14 @@ enum GameSnapshot: Hashable, Sendable, Codable {
 
                     役の強さは、ピンゾロ(1-1-1)が一番強く、次にゾロ目、シゴロ(4-5-6)、目(2個そろって残りが目になる)、目無し、ヒフミ(1-2-3)が一番弱い順です。全員が振り終えると、一番強い役を出した人が全員の賭けを総取りします。同じ強さで並んだら山分けです。
                     """)
+            case .bust:
+                String(localized: """
+                    倍率は1.00倍から始まり、0.01倍ずつ上がっていきます。好きなタイミングでSTOPできます。STOPするまで他の人の状況は見えず、自分がSTOPした瞬間にみんなの状況が公開されます。
+
+                    倍率が上がるほどBUSTしやすくなります。BUSTが起きると、まだSTOPしていない人は全員まとめて脱落します。
+
+                    誰もBUSTしなかったときは、一番高い倍率でSTOPした人が「自分の賭け金×倍率」(ただし参加者の賭け金の合計が上限)を受け取り、残りは他の参加者に払い戻されます。BUSTが起きたときは、脱落した人の賭け金を、生き残った人たちで倍率の低い人ほど多くなるように分け合います。誰もSTOPしないままBUSTしたときは、全員の賭け金がそのまま戻ります。
+                    """)
             }
         }
     }
@@ -162,6 +188,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt: .doubt
         case .blackjack: .blackjack
         case .chinchiro: .chinchiro
+        case .bust: .bust
         }
     }
 
@@ -175,6 +202,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt(let state): state.gameID
         case .blackjack(let state): state.gameID
         case .chinchiro(let state): state.gameID
+        case .bust(let state): state.gameID
         }
     }
 
@@ -187,6 +215,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt(let state): state.isFinished
         case .blackjack(let state): state.isFinished
         case .chinchiro(let state): state.isFinished
+        case .bust(let state): state.isFinished
         }
     }
 
@@ -199,6 +228,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt(let state): state.hostID
         case .blackjack(let state): state.hostID
         case .chinchiro(let state): state.hostID
+        case .bust(let state): state.hostID
         }
     }
 
@@ -222,6 +252,8 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             return state.playerIDs
         case .chinchiro(let state):
             return state.playerIDs
+        case .bust(let state):
+            return state.playerIDs
         }
     }
 
@@ -235,6 +267,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt(let state): state.isCancelled == true
         case .blackjack(let state): state.isCancelled == true
         case .chinchiro(let state): state.isCancelled == true
+        case .bust(let state): state.isCancelled == true
         }
     }
 
@@ -251,6 +284,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt(let state): return state.lobby != nil
         case .blackjack(let state): return state.lobby != nil
         case .chinchiro(let state): return state.lobby != nil
+        case .bust(let state): return state.lobby != nil
         }
     }
 
@@ -273,7 +307,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             return state.blackPlayerID == userID || state.whitePlayerID == userID
         case .colorBattle(let state):
             return state.isPlayer(userID)
-        case .daifugo, .indianPoker, .doubt, .blackjack, .chinchiro:
+        case .daifugo, .indianPoker, .doubt, .blackjack, .chinchiro, .bust:
             guard isWaitingForPlayers else { return false }
             if hostID == userID { return true }
             return allowsAnyPlayer && playerIDs.contains(userID)
@@ -304,6 +338,9 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .chinchiro(var state):
             state.isCancelled = true
             return .chinchiro(state)
+        case .bust(var state):
+            state.isCancelled = true
+            return .bust(state)
         }
     }
 
@@ -347,6 +384,12 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             lobby.joinedPlayerIDs.removeAll { $0 == userID }
             state.phase = .lobby(lobby)
             return .chinchiro(state)
+        case .bust(var state):
+            guard var lobby = state.lobby, state.hostID != userID,
+                  lobby.joinedPlayerIDs.contains(userID) else { return nil }
+            lobby.joinedPlayerIDs.removeAll { $0 == userID }
+            state.phase = .lobby(lobby)
+            return .bust(state)
         }
     }
 
@@ -363,6 +406,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         case .doubt(let state): return state.chipDeltas
         case .blackjack(let state): return state.chipDeltas
         case .chinchiro(let state): return state.chipDeltas
+        case .bust(let state): return state.chipDeltas
         }
     }
 
@@ -408,6 +452,11 @@ enum GameSnapshot: Hashable, Sendable, Codable {
         if case .chinchiro(let state) = self { return state }
         return nil
     }
+
+    var bust: BustSnapshot? {
+        if case .bust(let state) = self { return state }
+        return nil
+    }
 }
 
 // MARK: - 保存の形
@@ -422,6 +471,7 @@ extension GameSnapshot {
         case doubt
         case blackjack
         case chinchiro
+        case bust
     }
 
     /// 遊びが 1 種類しか無かった頃に送られたメッセージも読めるようにする.
@@ -460,6 +510,10 @@ extension GameSnapshot {
                 self = .chinchiro(state)
                 return
             }
+            if let state = try? container.decode(BustSnapshot.self, forKey: .bust) {
+                self = .bust(state)
+                return
+            }
         }
         let legacy = try OthelloSnapshot(from: decoder)
         self = .othello(legacy)
@@ -475,6 +529,7 @@ extension GameSnapshot {
         case .doubt(let state): try container.encode(state, forKey: .doubt)
         case .blackjack(let state): try container.encode(state, forKey: .blackjack)
         case .chinchiro(let state): try container.encode(state, forKey: .chinchiro)
+        case .bust(let state): try container.encode(state, forKey: .bust)
         }
     }
 }

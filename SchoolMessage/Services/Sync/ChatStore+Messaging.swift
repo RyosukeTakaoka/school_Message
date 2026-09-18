@@ -271,21 +271,41 @@ extension ChatStore {
     /// お互いの状態を上書きしないように).
     func currentGame(kind: GameSnapshot.Kind, in conversationID: ConversationID) -> GameSnapshot? {
         let matching = (messagesByConversation[conversationID] ?? [])
-            .filter { $0.content.game?.kind == kind && !$0.isUnsent }
-        guard let last = matching.last?.content.game else { return nil }
+            .compactMap { $0.isUnsent ? nil : $0.content.game }
+            .filter { $0.kind == kind }
+        guard let last = matching.last else { return nil }
+        return Self.mergingConcurrentMoves(last: last, candidates: matching)
+    }
 
-        // インディアンポーカーだけ, 相手の選択を見ずに動ける場面がある
-        // (`IndianPokerSnapshot.merged(_:)` 参照). 同じ対戦のメッセージを
-        // 畳み込み, 時系列の後勝ちで相手の選択が消えてしまうのを防ぐ.
-        if case .indianPoker(let latest) = last {
-            let sameRound = matching.compactMap { message -> IndianPokerSnapshot? in
-                guard case .indianPoker(let snapshot) = message.content.game, snapshot.gameID == latest.gameID
-                else { return nil }
-                return snapshot
+    /// 同時に手を進められる遊び(インディアンポーカー・BUST)だけ,
+    /// 同じ `gameID` を持つ候補を畳み込んで返す. それ以外はそのまま `last` を返す.
+    ///
+    /// 「1 手 = 1 メッセージ, 最後のメッセージが現在の状態」という設計だと,
+    /// お互いの様子を見ずに同時に動ける場面(インディアンポーカーの
+    /// 「勝負する/降りる」, BUST の「STOP するまで他人が見えない」)では,
+    /// 時系列の後勝ちで先に届いていた分が消えてしまうことがある
+    /// (`IndianPokerSnapshot.merged`, `BustSnapshot.merged` 参照)。
+    ///
+    /// `currentGame` だけでなく, 対戦画面を開いていなくても精算する
+    /// `settleFinishedChipGames` からも同じ畳み込みが要るため,
+    /// 両方から呼べるようにここへ切り出してある.
+    static func mergingConcurrentMoves(last: GameSnapshot, candidates: [GameSnapshot]) -> GameSnapshot {
+        switch last {
+        case .indianPoker(let latest):
+            let sameRound = candidates.compactMap { snapshot -> IndianPokerSnapshot? in
+                guard case .indianPoker(let state) = snapshot, state.gameID == latest.gameID else { return nil }
+                return state
             }
             return .indianPoker(IndianPokerSnapshot.merged(sameRound))
+        case .bust(let latest):
+            let sameRound = candidates.compactMap { snapshot -> BustSnapshot? in
+                guard case .bust(let state) = snapshot, state.gameID == latest.gameID else { return nil }
+                return state
+            }
+            return .bust(BustSnapshot.merged(sameRound))
+        default:
+            return last
         }
-        return last
     }
 
     /// いま遊べる対戦. 取り消されたものは「無い」ものとして扱う.

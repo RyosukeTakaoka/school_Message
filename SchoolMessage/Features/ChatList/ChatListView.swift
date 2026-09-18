@@ -33,16 +33,27 @@ struct ChatListView: View {
             }
 
             Section {
-                ForEach(store.conversations) { conversation in
-                    ChatListRow(conversation: conversation)
-                        .tag(conversation.id)
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await store.leaveConversation(conversation.id) }
-                            } label: {
-                                Label(String(localized: "退出"), systemImage: "rectangle.portrait.and.arrow.right")
+                if store.conversations.isEmpty {
+                    // ここは掲示板・ランキング・競馬・対戦ルールの行がある
+                    // 最初の Section とは別なので, ここだけを空の案内に
+                    // 差し替えれば, 上の行を隠さずに済む(以前は List 全体への
+                    // `.overlay` だったため, チャットが 0 件のときに
+                    // それらの入り口ごと覆い隠してしまっていた).
+                    if !store.isRefreshingConversations {
+                        emptyState
+                    }
+                } else {
+                    ForEach(store.conversations) { conversation in
+                        ChatListRow(conversation: conversation)
+                            .tag(conversation.id)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    Task { await store.leaveConversation(conversation.id) }
+                                } label: {
+                                    Label(String(localized: "退出"), systemImage: "rectangle.portrait.and.arrow.right")
+                                }
                             }
-                        }
+                    }
                 }
             } header: {
                 if !store.conversations.isEmpty {
@@ -52,11 +63,6 @@ struct ChatListView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("チャット")
-        .overlay {
-            if store.conversations.isEmpty && !store.isRefreshingConversations {
-                emptyState
-            }
-        }
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
                 if !store.isOnline {
