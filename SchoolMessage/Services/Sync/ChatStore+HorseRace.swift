@@ -59,6 +59,12 @@ extension ChatStore {
         do {
             bets = try await backend.fetchHorseRaceBets(raceID: raceID)
         } catch {
+            // 【診断ログ】ここで失敗していれば, まだ精算どころか馬券の一覧すら
+            // 読めていない. CloudKit の Production スキーマに HorseRaceBet /
+            // HorseRaceResult がまだ反映されていない場合もここに来る
+            // (docs/TODAY.md の「CloudKit スキーマを取り込んで Deploy」参照).
+            let description = AppError.wrap(error).localizedDescription
+            Log.backend.error("HORSE FETCH BETS FAILED raceID=\(raceID, privacy: .public) error=\(description, privacy: .public)")
             banner = AppError.wrap(error)
             return state
         }
@@ -68,6 +74,12 @@ extension ChatStore {
         if let me = currentUserID {
             state.myBets = bets.filter { $0.bettorID == me }
         }
+        // 【診断ログ】ここで myBets が 0 なら, 以降の精算はそもそも走らない
+        // (`settleHorseRaceIfNeeded` の `guard !state.myBets.isEmpty else { return nil }`).
+        // 「買ったのに 0 件」なら, currentUserID と馬券の bettorID が食い違っている
+        // (アカウント切り替えの持ち越し等)可能性が高い.
+        let meDescription = currentUserID?.rawValue ?? "nil"
+        Log.backend.notice("HORSE LOAD raceID=\(raceID, privacy: .public) phase=\(String(describing: phase), privacy: .public) me=\(meDescription, privacy: .public) totalBets=\(bets.count, privacy: .public) myBets=\(state.myBets.count, privacy: .public)")
         switch phase {
         case .betting:
             break
@@ -86,14 +98,30 @@ extension ChatStore {
 
         do {
             let result = try await resolvedResult(raceID: raceID, bets: bets)
-            guard let result else { return state }
+            guard let result else {
+                // 【診断ログ】結果の確定・取得の両方に失敗した(通常はここに来ない).
+                Log.backend.notice("HORSE RESULT raceID=\(raceID, privacy: .public) result=nil")
+                return state
+            }
 
             // 公表された種が, 材料どおりに作られたものかを確かめる.
             // 確定レコードは作った人があとから書き換えられるため, 読む側で必ず検算する.
             state.isResultUntrusted = !result.isConsistent(with: bets)
+            // 【診断ログ】ここが true のまま止まっているなら, 精算はここで完全に
+            // 止まる(`settleHorseRaceIfNeeded` の `guard !state.isResultUntrusted`).
+            // resultBetIDs と fetchedBets の件数のズレを見れば,
+            // 「締切後に来た馬券が種の材料に入らなかった」のか
+            // 「種そのものが書き換えられた」のか切り分けられる.
+            Log.backend.notice("HORSE CONSISTENCY raceID=\(raceID, privacy: .public) isResultUntrusted=\(state.isResultUntrusted, privacy: .public) resultBetIDs=\(result.betIDs.count, privacy: .public) fetchedBets=\(bets.count, privacy: .public)")
             state.run = HorseRaceRun(card: card, seed: result.seed)
             state.payout = await settleHorseRaceIfNeeded(state: state, result: result)
+            Log.backend.notice("HORSE PAYOUT raceID=\(raceID, privacy: .public) payout=\(state.payout.map(String.init) ?? "nil", privacy: .public)")
         } catch {
+            // 【診断ログ】以前はここで起きた例外が画面上部のバナーにしか出ず,
+            // あとから追えなかった. 「精算まで到達すらしていない」ケースの主な
+            // 原因はここ(結果の確定・取得での CloudKit エラー)である可能性が高い.
+            let description = AppError.wrap(error).localizedDescription
+            Log.backend.error("HORSE LOAD FAILED raceID=\(raceID, privacy: .public) error=\(description, privacy: .public)")
             banner = AppError.wrap(error)
         }
         return state
@@ -207,8 +235,13 @@ extension ChatStore {
 
     /// 確定した種を取る. まだ無ければ, ここで 1 件だけ作る.
     private func resolvedResult(raceID: String, bets: [HorseRaceBet]) async throws -> HorseRaceResult? {
-        if let existing = try await backend.fetchHorseRaceResult(raceID: raceID) { return existing }
-        return try await backend.lockHorseRaceResult(raceID: raceID, bets: bets)
+        if let existing = try await backend.fetchHorseRaceResult(raceID: raceID) {
+            Log.backend.notice("HORSE RESULT SOURCE raceID=\(raceID, privacy: .public) source=existing betIDs=\(existing.betIDs.count, privacy: .public)")
+            return existing
+        }
+        let locked = try await backend.lockHorseRaceResult(raceID: raceID, bets: bets)
+        Log.backend.notice("HORSE RESULT SOURCE raceID=\(raceID, privacy: .public) source=locked-by-this-device betIDs=\(locked.betIDs.count, privacy: .public)")
+        return locked
     }
 
     /// 自分のぶんだけ CHIP に反映する. 反映した払い戻し額を返す.
@@ -216,15 +249,30 @@ extension ChatStore {
     /// 他人の残高は書き換えられないので, 各自の端末が自分のぶんを反映する
     /// (チャットの中の対戦と同じ考え方).
     private func settleHorseRaceIfNeeded(state: HorseRaceState, result: HorseRaceResult) async -> Int? {
-        guard let run = state.run else { return nil }
-        // 検算に通らなかった種では精算しない(細工された可能性があるため).
-        guard !state.isResultUntrusted else { return nil }
-        guard !state.myBets.isEmpty else { return nil }
-
         let settlementID = Self.horseRaceSettlementID(raceID: state.raceID)
+        // 【診断ログ】ここでどの guard に引っかかって nil を返しているかが分かれば,
+        // ①〜④のどこで止まっているかがそのまま確定する.
+        Log.backend.notice("HORSE SETTLE ENTER raceID=\(state.raceID, privacy: .public) hasRun=\(state.run != nil, privacy: .public) isResultUntrusted=\(state.isResultUntrusted, privacy: .public) myBets=\(state.myBets.count, privacy: .public) alreadySettled=\(myWallet?.hasSettled(gameID: settlementID) ?? false, privacy: .public)")
+
+        guard let run = state.run else {
+            Log.backend.notice("HORSE SETTLE ABORT raceID=\(state.raceID, privacy: .public) reason=no-run")
+            return nil
+        }
+        // 検算に通らなかった種では精算しない(細工された可能性があるため).
+        guard !state.isResultUntrusted else {
+            Log.backend.notice("HORSE SETTLE ABORT raceID=\(state.raceID, privacy: .public) reason=untrusted-result")
+            return nil
+        }
+        guard !state.myBets.isEmpty else {
+            Log.backend.notice("HORSE SETTLE ABORT raceID=\(state.raceID, privacy: .public) reason=no-my-bets")
+            return nil
+        }
+
         if myWallet?.hasSettled(gameID: settlementID) == true {
             // すでに反映済み. 画面に出す額だけ計算し直す.
-            return run.totalPayout(for: state.myBets.filter { result.betIDs.contains($0.id) })
+            let payout = run.totalPayout(for: state.myBets.filter { result.betIDs.contains($0.id) })
+            Log.backend.notice("HORSE SETTLE ALREADY-DONE raceID=\(state.raceID, privacy: .public) displayedPayout=\(payout, privacy: .public)")
+            return payout
         }
 
         // 締切に間に合わず種の材料に入らなかった馬券は, レースに参加していないので
@@ -233,11 +281,20 @@ extension ChatStore {
         let uncounted = state.myBets.filter { !result.betIDs.contains($0.id) }
         let payout = run.totalPayout(for: counted)
         let refund = uncounted.reduce(0) { $0 + $1.amount }
+        let delta = payout + refund
+
+        // 【診断ログ】ここまで到達していれば, あとは CloudKit への書き込みが
+        // 成功しているかどうかだけの問題になる.
+        Log.backend.notice("HORSE CHIP DELTA START raceID=\(state.raceID, privacy: .public) gameID=\(settlementID, privacy: .public) counted=\(counted.count, privacy: .public) uncounted=\(uncounted.count, privacy: .public) payout=\(payout, privacy: .public) refund=\(refund, privacy: .public) delta=\(delta, privacy: .public)")
 
         do {
-            myWallet = try await backend.applyChipDelta(payout + refund, gameID: settlementID)
+            let saved = try await backend.applyChipDelta(delta, gameID: settlementID)
+            myWallet = saved
+            Log.backend.notice("HORSE CHIP DELTA SUCCESS raceID=\(state.raceID, privacy: .public) newBalance=\(saved.balance, privacy: .public) settledGameIDs=\(saved.settledGameIDs.count, privacy: .public)")
             return payout
         } catch {
+            let description = AppError.wrap(error).localizedDescription
+            Log.backend.error("HORSE CHIP DELTA FAILED raceID=\(state.raceID, privacy: .public) gameID=\(settlementID, privacy: .public) error=\(description, privacy: .public)")
             banner = AppError.wrap(error)
             return nil
         }
