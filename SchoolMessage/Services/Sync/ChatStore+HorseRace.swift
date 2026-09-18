@@ -252,7 +252,14 @@ extension ChatStore {
         let settlementID = Self.horseRaceSettlementID(raceID: state.raceID)
         // 【診断ログ】ここでどの guard に引っかかって nil を返しているかが分かれば,
         // ①〜④のどこで止まっているかがそのまま確定する.
-        Log.backend.notice("HORSE SETTLE ENTER raceID=\(state.raceID, privacy: .public) hasRun=\(state.run != nil, privacy: .public) isResultUntrusted=\(state.isResultUntrusted, privacy: .public) myBets=\(state.myBets.count, privacy: .public) alreadySettled=\(myWallet?.hasSettled(gameID: settlementID) ?? false, privacy: .public)")
+        //
+        // `myWallet` の参照は先に変数へ取り出しておく. OSLog の文字列補間に
+        // `self` を経由するプロパティを直接書くと, 内部で @escaping な
+        // クロージャとして展開されるため, Swift 6 の厳格な並行性検査で
+        // 「クロージャ内での self の暗黙キャプチャ」としてビルドエラーになる
+        // (実機のビルドで実際に検出された: ChatStore+HorseRace.swift:255).
+        let alreadySettled = myWallet?.hasSettled(gameID: settlementID) ?? false
+        Log.backend.notice("HORSE SETTLE ENTER raceID=\(state.raceID, privacy: .public) hasRun=\(state.run != nil, privacy: .public) isResultUntrusted=\(state.isResultUntrusted, privacy: .public) myBets=\(state.myBets.count, privacy: .public) alreadySettled=\(alreadySettled, privacy: .public)")
 
         guard let run = state.run else {
             Log.backend.notice("HORSE SETTLE ABORT raceID=\(state.raceID, privacy: .public) reason=no-run")
