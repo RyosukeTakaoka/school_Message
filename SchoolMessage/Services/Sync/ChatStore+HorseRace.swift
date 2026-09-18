@@ -355,7 +355,11 @@ extension ChatStore {
     /// ことで新たに起きることは無いはずだが, 起きてしまった開催日ぶんは
     /// 別途 CloudKit 上で結果を正しい馬券一覧から作り直したうえで,
     /// この一覧に載せて埋め合わせる(直った開催日は削除してよい).
-    private static let knownEmptyResultRaceIDs: Set<String> = ["2026-09-18"]
+    ///
+    /// - `2026-09-18`: CloudKit Dashboard で確認済み(馬券 58 件に対し betIDs が空).
+    /// - `2026-09-17`: 同じく確認済み(馬券 45 件に対し betIDs が空. 締切
+    ///   〈9/17 5:55 UTC〉より前の 9/16 13:56:51 UTC に確定してしまっていた).
+    private static let knownEmptyResultRaceIDs: Set<String> = ["2026-09-18", "2026-09-17"]
 
     /// 誤って全額返金だけで終わっていた分と, 本来の払い戻し額との差額を, 一度だけ埋め合わせる.
     ///
