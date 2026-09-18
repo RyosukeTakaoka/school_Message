@@ -134,6 +134,9 @@ extension ChatStore {
             state.refundedBetIDs = Set(state.myBets.map(\.id)).subtracting(result.betIDs)
             state.payout = await settleHorseRaceIfNeeded(state: state, result: result)
             Log.backend.notice("HORSE PAYOUT raceID=\(raceID, privacy: .public) payout=\(state.payout.map(String.init) ?? "nil", privacy: .public)")
+            // 端末の時計のズレで, 馬券が1件も無いまま結果が確定してしまった日の
+            // 埋め合わせ(`applyKnownBrokenRaceCorrectionIfNeeded` 参照).
+            await applyKnownBrokenRaceCorrectionIfNeeded(state: state, result: result)
         } catch {
             // 【診断ログ】以前はここで起きた例外が画面上部のバナーにしか出ず,
             // あとから追えなかった. 「精算まで到達すらしていない」ケースの主な
@@ -338,6 +341,60 @@ extension ChatStore {
             Log.backend.error("HORSE CHIP DELTA FAILED raceID=\(state.raceID, privacy: .public) gameID=\(settlementID, privacy: .public) error=\(description, privacy: .public)")
             banner = AppError.wrap(error)
             return nil
+        }
+    }
+
+    // MARK: - 過去の誤精算の埋め合わせ
+
+    /// 端末の時計・タイムゾーンのズレが原因で, 馬券が1件も無いまま
+    /// (`HorseRaceResult.betIDs` が空のまま)結果が確定してしまった開催日.
+    ///
+    /// この日は `settleHorseRaceIfNeeded` が「締切に間に合わなかった馬券」
+    /// として全員ぶんの馬券を扱い, 的中・不的中に関係なく賭けた額をそのまま
+    /// 全額返金していた. `HorseRaceSchedule` 側のタイムゾーンを固定した
+    /// ことで新たに起きることは無いはずだが, 起きてしまった開催日ぶんは
+    /// 別途 CloudKit 上で結果を正しい馬券一覧から作り直したうえで,
+    /// この一覧に載せて埋め合わせる(直った開催日は削除してよい).
+    private static let knownEmptyResultRaceIDs: Set<String> = ["2026-09-18"]
+
+    /// 誤って全額返金だけで終わっていた分と, 本来の払い戻し額との差額を, 一度だけ埋め合わせる.
+    ///
+    /// 対象は `knownEmptyResultRaceIDs` に載っている開催日だけ. かつ, その日の
+    /// `HorseRaceResult` が(CloudKit 上で作り直されて)実際に馬券を含むように
+    /// なってから初めて動く — 壊れたまま(`betIDs` が空のまま)のときに動くと,
+    /// 「差額 0」を精算済みとして記録してしまい, 直ったあとも二度と埋め合わせ
+    /// られなくなるため, 必ず `!result.betIDs.isEmpty` を確かめてから行う.
+    private func applyKnownBrokenRaceCorrectionIfNeeded(state: HorseRaceState, result: HorseRaceResult) async {
+        guard Self.knownEmptyResultRaceIDs.contains(state.raceID) else { return }
+        // 壊れた結果のままなら, 直るまで何もしない(上記参照).
+        guard !result.betIDs.isEmpty else { return }
+        guard !state.isResultUntrusted, let run = state.run else { return }
+        guard !state.myBets.isEmpty else { return }
+
+        let correctionID = "\(Self.horseRaceSettlementID(raceID: state.raceID))-fix"
+        if myWallet?.hasSettled(gameID: correctionID) == true { return }
+
+        // 壊れていたときは `betIDs` が空だったため, 的中・不的中に関係なく
+        // 「賭けた額の合計」をそのまま全額受け取っている. 本来受け取るべき額
+        // (正しい結果での払い戻し + 種の材料に入らなかった分の返金)との差額
+        // だけを, ここで一度だけ追加で反映する.
+        let counted = state.myBets.filter { result.betIDs.contains($0.id) }
+        let uncounted = state.myBets.filter { !result.betIDs.contains($0.id) }
+        let trueTotal = run.totalPayout(for: counted) + uncounted.reduce(0) { $0 + $1.amount }
+        let alreadyReceived = state.myBets.reduce(0) { $0 + $1.amount }
+        let correction = trueTotal - alreadyReceived
+
+        Log.backend.notice("HORSE CORRECTION raceID=\(state.raceID, privacy: .public) trueTotal=\(trueTotal, privacy: .public) alreadyReceived=\(alreadyReceived, privacy: .public) correction=\(correction, privacy: .public)")
+
+        do {
+            let saved = try await backend.applyChipDelta(correction, gameID: correctionID)
+            myWallet = saved
+            Log.backend.notice("HORSE CORRECTION SUCCESS raceID=\(state.raceID, privacy: .public) newBalance=\(saved.balance, privacy: .public)")
+        } catch {
+            let description = AppError.wrap(error).localizedDescription
+            Log.backend.error("HORSE CORRECTION FAILED raceID=\(state.raceID, privacy: .public) error=\(description, privacy: .public)")
+            // 埋め合わせが失敗しても, 通常の対戦結果を隠すほどのことではないので
+            // banner は出さない(次に開いたときにまた自動で試す).
         }
     }
 }
