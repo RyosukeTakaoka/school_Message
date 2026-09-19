@@ -213,11 +213,11 @@ struct BustGameView: View {
                     }
                 }
             } else if survivors.isEmpty {
-                Text("誰もSTOPできないままBUSTしました。賭け金はそのまま戻ります")
+                Text("誰もSTOPできないままCRASHしました。賭け金はそのまま戻ります")
                     .font(.headline)
             } else {
                 let names = busted.map { store.displayName(for: $0) }.joined(separator: "、")
-                Text("BUST! \(names) が脱落しました")
+                Text("CRASH! \(names) が脱落しました")
                     .font(.headline)
                     .foregroundStyle(Palette.failure)
             }
@@ -257,7 +257,7 @@ struct BustGameView: View {
                                 .foregroundStyle(delta > 0 ? .green : (delta < 0 ? Palette.failure : Palette.subdued))
                         }
                     } else if isFinished {
-                        Text("BUST")
+                        Text("CRASH")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Palette.failure)
                         if let delta = deltas[playerID] {
