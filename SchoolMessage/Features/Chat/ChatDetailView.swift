@@ -187,6 +187,8 @@ struct ChatDetailView: View {
                 ChinchiroGameView(conversationID: conversation.id)
             case .bust:
                 BustGameView(conversationID: conversation.id)
+            case .slingo:
+                SlingoGameView(conversationID: conversation.id)
             }
         }
         .fullScreenCover(item: $viewingMedia) { attachment in
