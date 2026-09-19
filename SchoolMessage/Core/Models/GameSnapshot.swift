@@ -53,7 +53,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             case .doubt: String(localized: "ダウト")
             case .blackjack: String(localized: "ブラックジャック")
             case .chinchiro: String(localized: "チンチロ")
-            case .bust: String(localized: "BUST")
+            case .bust: String(localized: "CRASH")
             case .slingo: String(localized: "スリンゴ")
             }
         }
@@ -178,9 +178,9 @@ enum GameSnapshot: Hashable, Sendable, Codable {
                 String(localized: """
                     倍率は1.00倍から始まり、0.01倍ずつ上がっていきます。好きなタイミングでSTOPできます。STOPするまで他の人の状況は見えず、自分がSTOPした瞬間にみんなの状況が公開されます。
 
-                    倍率が上がるほどBUSTしやすくなります。BUSTが起きると、まだSTOPしていない人は全員まとめて脱落します。
+                    倍率が上がるほどCRASHしやすくなります。CRASHが起きると、まだSTOPしていない人は全員まとめて脱落します。
 
-                    誰もBUSTしなかったときは、一番高い倍率でSTOPした人が「自分の賭け金×倍率」(ただし参加者の賭け金の合計が上限)を受け取り、残りは他の参加者に払い戻されます。BUSTが起きたときは、脱落した人の賭け金を、生き残った人たちで倍率の低い人ほど多くなるように分け合います。誰もSTOPしないままBUSTしたときは、全員の賭け金がそのまま戻ります。
+                    誰もCRASHしなかったときは、一番高い倍率でSTOPした人が「自分の賭け金×倍率」(ただし参加者の賭け金の合計が上限)を受け取り、残りは他の参加者に払い戻されます。CRASHが起きたときは、脱落した人の賭け金を、生き残った人たちで倍率の低い人ほど多くなるように分け合います。誰もSTOPしないままCRASHしたときは、全員の賭け金がそのまま戻ります。
                     """)
             case .slingo:
                 String(localized: """
