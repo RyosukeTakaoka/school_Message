@@ -1,6 +1,6 @@
 import Foundation
 
-/// CHIP を使う 5 つの遊び(インディアンポーカー・ダウト・ブラックジャック・チンチロ・BUST)と,
+/// CHIP を使う 6 つの遊び(インディアンポーカー・ダウト・ブラックジャック・チンチロ・BUST・Slingo)と,
 /// その精算.
 ///
 /// 1 手 = 1 メッセージという既存の仕組みはそのまま使う(`sendGameMove`).
@@ -647,5 +647,70 @@ extension ChatStore {
             }
         }
         await settleChipsIfNeeded(for: .bust(snapshot))
+    }
+
+    // MARK: - Slingo
+
+    func createSlingoLobby(bet: Int, in conversationID: ConversationID) async {
+        guard let me = currentUserID, assertCanBet(bet, maxBet: SlingoSnapshot.maxBet) else { return }
+        await sendGameMove(.slingo(.newLobby(hostID: me, bet: bet)), in: conversationID)
+    }
+
+    func joinSlingo(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .slingo, in: conversationID)?.slingo,
+              var lobby = snapshot.lobby,
+              !lobby.joinedPlayerIDs.contains(me)
+        else { return }
+        guard lobby.joinedPlayerIDs.count < SlingoSnapshot.maximumPlayers else {
+            banner = .underlying(String(localized: "満員です(最大\(SlingoSnapshot.maximumPlayers)人)"))
+            return
+        }
+        guard assertCanBet(lobby.bet, maxBet: SlingoSnapshot.maxBet) else { return }
+        lobby.joinedPlayerIDs.append(me)
+        var next = snapshot
+        next.phase = .lobby(lobby)
+        await sendGameMove(.slingo(next), in: conversationID)
+    }
+
+    /// 参加した順がそのまま手番の順になる.
+    func startSlingo(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .slingo, in: conversationID)?.slingo,
+              let lobby = snapshot.lobby,
+              me == snapshot.hostID,
+              lobby.joinedPlayerIDs.count >= SlingoSnapshot.minimumPlayers
+        else { return }
+        guard await assertEveryoneCanPay(lobby.joinedPlayerIDs, bet: lobby.bet) else { return }
+        var next = snapshot
+        next.phase = .playing(
+            SlingoSnapshot.Round(
+                playerIDs: lobby.joinedPlayerIDs,
+                bet: lobby.bet,
+                startedAt: .now,
+                startSeed: .random(in: UInt64.min...UInt64.max)
+            )
+        )
+        await sendGameMove(.slingo(next), in: conversationID)
+    }
+
+    /// SPIN する. 出る結果は対戦開始時の種から計算する(誰の端末で呼んでも同じ).
+    func spinSlingo(in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .slingo, in: conversationID)?.slingo,
+              let next = snapshot.spinning(by: me)
+        else { return }
+        await sendGameMove(.slingo(next), in: conversationID)
+        await settleChipsIfNeeded(for: .slingo(next))
+    }
+
+    /// WILD: 自分のカードの未開放マスを 1 つ選んで開ける.
+    func openSlingoWildCell(_ number: Int, in conversationID: ConversationID) async {
+        guard let me = currentUserID,
+              let snapshot = currentGame(kind: .slingo, in: conversationID)?.slingo,
+              let next = snapshot.openingWildCell(number, by: me)
+        else { return }
+        await sendGameMove(.slingo(next), in: conversationID)
+        await settleChipsIfNeeded(for: .slingo(next))
     }
 }
