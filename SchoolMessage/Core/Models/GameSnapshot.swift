@@ -54,7 +54,7 @@ enum GameSnapshot: Hashable, Sendable, Codable {
             case .blackjack: String(localized: "ブラックジャック")
             case .chinchiro: String(localized: "チンチロ")
             case .bust: String(localized: "BUST")
-            case .slingo: String(localized: "Slingo")
+            case .slingo: String(localized: "スリンゴ")
             }
         }
 
@@ -186,9 +186,9 @@ enum GameSnapshot: Hashable, Sendable, Codable {
                 String(localized: """
                     5×5のカードに1〜50の数字が25個ずつ並びます(カードは一人ひとり違い、他の人のカードも常に見えます)。ターン制で、自分の番が来たらSPINします。出た数字は、それを持っている全員のカードで自動的に開きます。
 
-                    WILDが出たときだけ特別です。WILDはスピンした本人だけが使え、自分のカードの未開放マスを1つ選んで開けられます。
+                    スロットには数字のほかに「？」も混ざっています。「？」はWILDかハズレのどちらかで、どちらが何枚あるかは最後まで分かりません。WILDだった場合は、スピンした本人だけが自分のカードの未開放マスを1つ選んで開けられます。
 
-                    縦・横・斜めのどれか1列(5マス)を開けた人がSlingoです。最初にSlingoした人が参加者の賭け金の合計を総取りします。同じSPINの結果で複数人が同時に完成したときは、その人たちで山分けします。
+                    縦・横・斜めのどれか1列(5マス)を開けた人がスリンゴです。最初にスリンゴした人が参加者の賭け金の合計を総取りします。同じSPINの結果で複数人が同時に完成したときは、その人たちで山分けします。
                     """)
             }
         }

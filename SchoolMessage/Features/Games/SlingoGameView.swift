@@ -1,21 +1,16 @@
 import SwiftUI
 
-/// Slingo の対戦画面.
+/// スリンゴの対戦画面.
 ///
 /// 他の CHIP ゲームと違い, 隠す情報が無い(カードは全員から見える). そのため
-/// BUST やチンチロにある「演出が終わるまで自分の分を隠す」仕掛けは要らない ――
-/// 同期で届いた状態をそのまま出すだけでよい.
+/// BUST やチンチロにある「演出が終わるまで自分の分を隠す」仕掛けは要らない.
 ///
-/// SPIN の結果は対戦開始時の種から決まる決定的な値(`SlingoSnapshot.spinning(by:)`)
-/// なので, ボタンを押した本人の端末はネットワークの往復を待たずに結果が分かる.
-/// その値を使って, チンチロのダイスと同じ「高速に切り替わってから, ふわっと
-/// 止まる」演出を 1 つのリール(数字 or WILD)で行う. 他の人の端末には,
-/// 同期で届いた瞬間に軽いアニメーションで反映する(スピン中の演出そのものは
-/// 押した本人だけ ―― 全員ぶん揃えるのは今回は見送っている. 下の TODO 参照).
-///
-/// TODO: 手が空いたら, 自分が押していない SPIN でも(届いた瞬間に)簡単な
-/// スピン演出を出せるとより気持ちよくなる. 今回はターン制の骨組みを優先し,
-/// 見送った.
+/// SPIN の演出(数字 / 「？」 / WILD・ハズレの確定)は, 誰の端末でも
+/// `SlingoSnapshot.revealStage(drawnAt:draw:now:)` という「経過時間だけで
+/// 決まる純粋な関数」から求める. これは BUST の倍率表示と同じ考え方で,
+/// 押した本人の端末はもちろん, あとから同期で届いただけの端末でも,
+/// 同じタイミングで同じ演出が見える(押した本人だけ演出が違う, ということが
+/// 起きない).
 struct SlingoGameView: View {
 
     @Environment(AppEnvironment.self) private var environment
@@ -23,11 +18,8 @@ struct SlingoGameView: View {
     let conversationID: ConversationID
 
     @State private var isSending = false
-    @State private var isSpinning = false
-    @State private var isRevealingResult = false
-    @State private var displayDraw: SlingoSnapshot.DrawItem = .number(Int.random(in: SlingoSnapshot.cardNumberRange))
-    @State private var spinTask: Task<Void, Never>?
-    @State private var revealTask: Task<Void, Never>?
+    /// 演出の段階を計算するための「いま」. `.task(id:)` のループで刻む.
+    @State private var now = Date.now
     @State private var settledDelta: Int?
 
     private var store: ChatStore { environment.store }
@@ -70,11 +62,6 @@ struct SlingoGameView: View {
             guard let snapshot, snapshot.isFinished, let me else { return }
             settledDelta = await store.settleChipsIfNeeded(for: .slingo(snapshot)) ?? snapshot.chipDeltas[me]
         }
-        .onDisappear {
-            spinTask?.cancel()
-            revealTask?.cancel()
-            isSpinning = false
-        }
     }
 
     // MARK: - 対戦中
@@ -82,6 +69,8 @@ struct SlingoGameView: View {
     @ViewBuilder
     private func roundView(_ snapshot: SlingoSnapshot) -> some View {
         if let round = snapshot.round {
+            let stage = Self.stage(for: round, now: now)
+            let isRevealingNow = stage != .resolved
             let isMyTurn = me != nil && snapshot.currentPlayerID == me
             let isMyWildPick = me != nil && round.pendingWildFor == me
             let isPlayer = me.map { round.playerIDs.contains($0) } ?? false
@@ -96,10 +85,14 @@ struct SlingoGameView: View {
                         ChipBalanceBadge(compact: true)
                     }
 
-                    turnBanner(snapshot)
-                    reelView
+                    turnBanner(snapshot, isRevealingNow: isRevealingNow)
+                    reelView(round: round, stage: stage)
 
-                    if snapshot.isFinished {
+                    if isRevealingNow {
+                        Text("結果を確認しています…")
+                            .font(.footnote)
+                            .foregroundStyle(Palette.subdued)
+                    } else if snapshot.isFinished {
                         resultLine(snapshot)
                         if let me, let delta = settledDelta ?? snapshot.chipDeltas[me] {
                             ChipResultBanner(delta: delta)
@@ -111,7 +104,7 @@ struct SlingoGameView: View {
                             .multilineTextAlignment(.center)
                     } else if isMyTurn {
                         Button {
-                            spinTapped(snapshot: snapshot)
+                            run { await store.spinSlingo(in: conversationID) }
                         } label: {
                             Text("SPIN")
                                 .font(.title2.weight(.heavy))
@@ -119,7 +112,7 @@ struct SlingoGameView: View {
                                 .padding(.vertical, 14)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isSending || isSpinning)
+                        .disabled(isSending)
                         .padding(.horizontal, AppConstants.Layout.standardSpacing)
                     } else if isPlayer {
                         Text("他の人の番を待っています")
@@ -139,7 +132,7 @@ struct SlingoGameView: View {
                             playerID: me,
                             snapshot: snapshot,
                             isLarge: true,
-                            isInteractive: isMyWildPick
+                            isInteractive: isMyWildPick && !isRevealingNow
                         ) { number in
                             run { await store.openSlingoWildCell(number, in: conversationID) }
                         }
@@ -174,20 +167,44 @@ struct SlingoGameView: View {
                 }
                 .padding(AppConstants.Layout.standardSpacing)
             }
-            .task(id: round.lastDraw) {
-                // 自分が押した SPIN は `spinTapped` 側ですでに演出中なので, ここでは
-                // 他の端末から届いた分(自分の演出中でない場合)だけ反映する.
-                guard !isRevealingResult, let draw = round.lastDraw else { return }
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    displayDraw = draw
-                }
+            .task(id: round.lastDrawAt) {
+                await tickReveal(round: round)
             }
         }
     }
 
-    private func turnBanner(_ snapshot: SlingoSnapshot) -> some View {
+    private static func stage(for round: SlingoSnapshot.Round, now: Date) -> SlingoSnapshot.RevealStage {
+        guard let draw = round.lastDraw, let drawnAt = round.lastDrawAt else { return .resolved }
+        return SlingoSnapshot.revealStage(drawnAt: drawnAt, draw: draw, now: now)
+    }
+
+    /// `now` を刻んで, 演出の段階が進むたびに軽い触覚を鳴らす.
+    /// 段階が `.resolved` になったら, これ以上刻む必要が無いので抜ける.
+    private func tickReveal(round: SlingoSnapshot.Round) async {
+        guard round.lastDraw != nil, round.lastDrawAt != nil else { return }
+        var announcedFace = false
+        while !Task.isCancelled {
+            now = .now
+            let stage = Self.stage(for: round, now: now)
+            if stage != .spinning, !announcedFace {
+                GameHaptics.tick()
+                announcedFace = true
+            }
+            if stage == .resolved {
+                if case .wild = round.lastDraw {
+                    GameHaptics.result(didWin: true)
+                }
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
+    private func turnBanner(_ snapshot: SlingoSnapshot, isRevealingNow: Bool) -> some View {
         let text: String
-        if snapshot.isFinished {
+        if isRevealingNow {
+            text = ""
+        } else if snapshot.isFinished {
             text = String(localized: "対戦終了")
         } else if let pending = snapshot.round?.pendingWildFor {
             text = pending == me
@@ -205,41 +222,54 @@ struct SlingoGameView: View {
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
-    /// SPIN の結果を出すリール. 数字か WILD を 1 つだけ表示する.
-    private var reelView: some View {
-        Group {
-            switch displayDraw {
-            case .number(let value):
-                Text("\(value)")
-                    .monospacedDigit()
-            case .wild:
-                Text("WILD")
+    /// SPIN の結果を出すリール.
+    ///
+    /// `.spinning` と `.face`(「？」)は WILD かハズレかで見た目もタイミングも
+    /// 変えない ―― 演出だけを見て事前に当たり外れを読めないようにするため
+    /// (`SlingoSnapshot.RevealStage` のコメント参照)。
+    private func reelView(round: SlingoSnapshot.Round, stage: SlingoSnapshot.RevealStage) -> some View {
+        let text: String
+        switch stage {
+        case .spinning:
+            text = round.lastDraw == nil ? "-" : "…"
+        case .face:
+            text = "？"
+        case .resolved:
+            switch round.lastDraw {
+            case .number(let value): text = "\(value)"
+            case .wild: text = "WILD"
+            case .miss: text = "ハズレ"
+            case nil: text = "-"
             }
         }
-        .font(.system(size: 40, weight: .heavy, design: .rounded))
-        .frame(width: 140, height: 90)
-        .background(
-            Color.accentColor.opacity(isSpinning ? 0.10 : 0.18),
-            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.accentColor, lineWidth: 2)
-        }
-        .scaleEffect(isSpinning ? 0.96 : 1)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isSpinning)
+        let isPulsing = stage != .resolved && round.lastDraw != nil
+
+        return Text(text)
+            .font(.system(size: 36, weight: .heavy, design: .rounded))
+            .monospacedDigit()
+            .frame(width: 140, height: 90)
+            .background(
+                Color.accentColor.opacity(isPulsing ? 0.10 : 0.18),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+            }
+            .scaleEffect(isPulsing ? 0.96 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: stage)
     }
 
     private func resultLine(_ snapshot: SlingoSnapshot) -> some View {
         let winners = snapshot.round?.finisherIDs ?? []
         let text: String
         if winners.count == 1 {
-            text = String(localized: "\(store.displayName(for: winners[0])) がSlingo! 総取りです")
+            text = String(localized: "\(store.displayName(for: winners[0])) がスリンゴ! 総取りです")
         } else if winners.isEmpty {
             text = ""
         } else {
             let names = winners.map { store.displayName(for: $0) }.joined(separator: "、")
-            text = String(localized: "\(names) が同時にSlingo! 山分けです")
+            text = String(localized: "\(names) が同時にスリンゴ! 山分けです")
         }
         return Text(text)
             .font(.headline)
@@ -266,7 +296,7 @@ struct SlingoGameView: View {
                     Text(title)
                         .font(isLarge ? .subheadline.weight(.semibold) : .caption.weight(.semibold))
                     if isWinner {
-                        Text("Slingo!")
+                        Text("スリンゴ!")
                             .font(.caption2.weight(.bold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -296,41 +326,6 @@ struct SlingoGameView: View {
     }
 
     // MARK: - 動作
-
-    /// SPIN を押した瞬間. 結果は種から決まる決定的な値なので, 送信の往復を
-    /// 待たずにこの場でも同じ値を計算できる(`snapshot.spinning(by:)`)。
-    /// その値を使って先にリールの演出を始めつつ, 実際の送信も並行して行う.
-    private func spinTapped(snapshot: SlingoSnapshot) {
-        guard let me, let peeked = snapshot.spinning(by: me), let draw = peeked.round?.lastDraw else { return }
-        run { await store.spinSlingo(in: conversationID) }
-
-        revealTask?.cancel()
-        revealTask = Task { await revealSpin(draw) }
-    }
-
-    private func revealSpin(_ draw: SlingoSnapshot.DrawItem) async {
-        isRevealingResult = true
-        isSpinning = true
-        spinTask?.cancel()
-        spinTask = Task {
-            while !Task.isCancelled {
-                displayDraw = .number(Int.random(in: SlingoSnapshot.cardNumberRange))
-                try? await Task.sleep(for: .milliseconds(70))
-            }
-        }
-
-        try? await Task.sleep(for: .milliseconds(900))
-        spinTask?.cancel()
-        isSpinning = false
-        GameHaptics.tick()
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
-            displayDraw = draw
-        }
-        if case .wild = draw {
-            GameHaptics.result(didWin: true)
-        }
-        isRevealingResult = false
-    }
 
     private func run(_ operation: @escaping () async -> Void) {
         Task {

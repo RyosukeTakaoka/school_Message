@@ -8,9 +8,10 @@ import Foundation
 ///   違う 5×5 の並び(中央 FREE なし).
 /// - ターン制で, 手番の人だけが SPIN できる. 出た結果は**全員に同じもの**が
 ///   届き, 該当する数字を持っている全員のカードが自動で開く.
-/// - WILD が出たときだけ特別で, スピンした本人だけが自分のカードの好きな
-///   未開放マスを 1 つ選んで開けられる. このときだけ「今どこを開けるか」が
-///   プレイヤー自身の判断になる.
+/// - WILD は「選んで使う」ものではなく, スロットの中に混ざっている結果の 1 つ.
+///   WILD が出たときだけ特別で, スピンした本人だけが自分のカードの好きな
+///   未開放マスを 1 つ選んで開けられる(選べるのは「WILD を使うかどうか」
+///   ではなく「WILD が出た結果, どこを開けるか」だけ).
 /// - 縦・横・斜めのどれか 1 列(5 マス)を開けた人が Slingo(上がり)。
 ///   最初に上がった人が賭け金の合計を総取りする. 同じ SPIN の結果で複数人が
 ///   同時に完成したときは, その人たちで山分けする.
@@ -18,18 +19,31 @@ import Foundation
 ///   ポーカーや大富豪のように手札を暗号化して配る仕組みは要らない.
 ///
 /// ## 共有スロットの決め方
-/// 「山」は 1〜50 の数字 1 個ずつと WILD `wildCount` 枚を混ぜてシャッフルした
-/// もの. シャッフルの種(`Round.startSeed`)は対戦を開始した端末が生成し,
-/// 全端末が同じ式(`drawSequence(seed:)`)で同じ並びを計算する
-/// (`BustSnapshot`/`ChinchiroSnapshot` と同じ「対戦相手を信頼する」前提の
-/// 乱数の共有. 悪用の余地については `BustSnapshot` のコメント参照)。
+/// 「山」は 1〜50 の数字 1 個ずつと, 「？(ミステリー)」`mysterySlotCount` 枚を
+/// 混ぜてシャッフルしたもの. 「？」のうち実際に WILD なのは `wildCount(seed:)`
+/// 枚(1 枚 70% / 2 枚 30%)だけで, 残りは「ハズレ」. どちらも対戦開始時の種
+/// (`Round.startSeed`)だけから, 全端末が同じ式で計算する(`BustSnapshot`/
+/// `ChinchiroSnapshot` と同じ「対戦相手を信頼する」前提の乱数の共有. 悪用の
+/// 余地については `BustSnapshot` のコメント参照)。「？」が何枚 WILD かは
+/// どの画面にも出さないので, プレイヤーは最後まで残り枚数が分からない.
+///
 /// 各自のカードも, 同じ種とプレイヤー ID から `card(for:seed:)` で決定的に
 /// 計算するので, メッセージにカードそのものを載せる必要が無い(対戦を
 /// 始めるメッセージに種が 1 つ載るだけで済む)。
 ///
 /// 数字は 1〜50 が山の中に 1 回ずつしか無いので, 山を最後まで引けば
-/// (WILD を挟んでも)必ず全員のカードが全開放になる ―― つまり対戦は
+/// (「？」を挟んでも)必ず全員のカードが全開放になる ―― つまり対戦は
 /// どんなに揃わなくても必ず終わる.
+///
+/// ## 演出の同期
+/// SPIN の結果(数字 / WILD / ハズレ)そのものはメッセージが届いた瞬間に
+/// 確定するが, 見せ方だけ `Round.lastDrawAt` からの経過時間で段階分けして
+/// 遅らせている(`revealStage(drawnAt:draw:now:)`)。時刻という誰でも同じ
+/// 値を計算できるものだけを使うので, 押した本人の端末はもちろん, 届いた
+/// だけの他の端末でも, 同じタイミングで同じ演出が見える(BUST の倍率が
+/// 経過時間だけの純粋関数なのと同じ考え方). WILD とハズレは, 結果が
+/// 確定するまで見た目もタイミングも完全に同じ「？」にしておくことで,
+/// 演出から事前に当たり外れを読めないようにしている.
 ///
 /// ターン制で「手番の人しか操作できない」ため, インディアンポーカーや BUST の
 /// ような「同時に複数人が動く」場面が無い. そのため `merged(_:)` のような
@@ -47,14 +61,48 @@ struct SlingoSnapshot: Hashable, Sendable, Codable {
     static let gridSize = 5
     static let numbersPerCard = gridSize * gridSize
     static let cardNumberRange = 1...50
-    /// 山に混ぜる WILD の枚数. 「早上がり競争」の緊張感とのバランスを見た
-    /// 最初の仮値(実際に遊びながら調整が要る想定. ここだけ変えれば済む).
-    static let wildCount = 6
+    /// 山に混ぜる「？(ミステリー)」の枚数. このうち実際に WILD なのは
+    /// `wildCount(seed:)` 枚だけ(残りはハズレ)で, 画面にはどちらも「？」
+    /// までしか出さない.
+    static let mysterySlotCount = 6
 
-    /// スロットの結果 1 つぶん.
+    /// SPIN から, 数字 or 「？」を見せるまでの間.
+    static let faceRevealDelay: TimeInterval = 0.2
+    /// 「？」から, WILD かハズレかを見せるまでの間.
+    static let mysteryResolveDelay: TimeInterval = 1.0
+
+    /// スロットの結果 1 つぶん. `miss` は「？」がハズレだったことを表す
+    /// (画面には「MISS」ではなく「ハズレ」と出す. 表示文言は View 側の仕事).
     enum DrawItem: Hashable, Sendable, Codable {
         case number(Int)
         case wild
+        case miss
+    }
+
+    /// SPIN 結果を, 今の時点(`now`)でどこまで見せてよいか.
+    ///
+    /// WILD とハズレは, `.face` の間はどちらも同じ「？」にしか見えない
+    /// ようにする(`SlingoGameView` 側の描き分けの責務). 経過時間だけで
+    /// 決まる純粋な段階なので, 全端末で必ず同じ結果になる.
+    enum RevealStage: Hashable, Sendable {
+        /// SPIN 直後. まだ何も見せない.
+        case spinning
+        /// 数字, または「？」(WILD かハズレかはまだ見せない)を見せてよい.
+        case face
+        /// 最終結果(数字 / WILD / ハズレ)を見せてよい.
+        case resolved
+    }
+
+    /// `draw` を `drawnAt` に引いたとして, `now` の時点でどこまで見せてよいか.
+    static func revealStage(drawnAt: Date, draw: DrawItem, now: Date = .now) -> RevealStage {
+        let elapsed = now.timeIntervalSince(drawnAt)
+        guard elapsed >= faceRevealDelay else { return .spinning }
+        switch draw {
+        case .number:
+            return .resolved
+        case .wild, .miss:
+            return elapsed >= faceRevealDelay + mysteryResolveDelay ? .resolved : .face
+        }
     }
 
     /// 5×5 のカード. `numbers` は左上から右へ, 行ごとに並ぶ(row-major, 25 個).
@@ -100,8 +148,11 @@ struct SlingoSnapshot: Hashable, Sendable, Codable {
         var wildOpenedNumbers: [UserID: Set<Int>] = [:]
         /// WILD が出て, まだそのマスを選んでいない人. nil なら通常の手番進行.
         var pendingWildFor: UserID? = nil
-        /// 直近の SPIN 結果(演出・表示用).
+        /// 直近の SPIN 結果(演出・表示用. 中身自体は届いた瞬間に確定するが,
+        /// 見せるタイミングは `revealStage(drawnAt:draw:now:)` が決める).
         var lastDraw: DrawItem? = nil
+        /// 直近の SPIN が確定した時刻. 演出の段階分けの基準(`revealStage`)。
+        var lastDrawAt: Date? = nil
         /// 直近に SPIN した人(演出・表示用. WILD 待ちの間も, 選び終えるまで
         /// この人のまま).
         var lastSpinnerID: UserID? = nil
@@ -171,6 +222,13 @@ struct SlingoSnapshot: Hashable, Sendable, Codable {
         round?.pendingWildFor != nil
     }
 
+    /// 直近の SPIN の演出がまだ再生中か(全員の画面でタイミングを揃えるための
+    /// 判定. この間は SPIN も WILD のマス選択もできない).
+    func isRevealing(now: Date = .now) -> Bool {
+        guard let round, let draw = round.lastDraw, let drawnAt = round.lastDrawAt else { return false }
+        return Self.revealStage(drawnAt: drawnAt, draw: draw, now: now) != .resolved
+    }
+
     // MARK: - カードと山
 
     /// `playerID` のカード. 種から決定的に計算するので, 対戦中いつでも
@@ -187,11 +245,22 @@ struct SlingoSnapshot: Hashable, Sendable, Codable {
         return Self.card(for: playerID, seed: round.startSeed)
     }
 
-    /// 山の中身. 1〜50 の数字 1 個ずつと WILD `wildCount` 枚をシャッフルした並び.
+    /// この対戦で「？」`mysterySlotCount` 枚のうち実際に WILD なのは何枚か.
+    /// 1 枚 70% / 2 枚 30% で, 対戦開始時の種から 1 回だけ決める
+    /// (全端末が同じ値になる. どの画面にもこの値そのものは出さない).
+    static func wildCount(seed: UInt64) -> Int {
+        var generator = SeededGenerator(seed: seed ^ 0x5A1D_C0DE)
+        return generator.next() % 100 < 70 ? 1 : 2
+    }
+
+    /// 山の中身. 1〜50 の数字 1 個ずつと, 「？」`mysterySlotCount` 枚
+    /// (うち `wildCount(seed:)` 枚が WILD, 残りがハズレ)をシャッフルした並び.
     static func drawSequence(seed: UInt64) -> [DrawItem] {
         var generator = SeededGenerator(seed: seed)
         var items: [DrawItem] = cardNumberRange.map { DrawItem.number($0) }
-        items.append(contentsOf: Array(repeating: DrawItem.wild, count: wildCount))
+        let wilds = wildCount(seed: seed)
+        items.append(contentsOf: Array(repeating: DrawItem.wild, count: wilds))
+        items.append(contentsOf: Array(repeating: DrawItem.miss, count: mysterySlotCount - wilds))
         items.shuffle(using: &generator)
         return items
     }
@@ -236,24 +305,30 @@ struct SlingoSnapshot: Hashable, Sendable, Codable {
 
     // MARK: - 操作
 
-    /// SPIN する. 呼べるのは今の手番の人だけ, かつ WILD 待ちでないとき.
+    /// SPIN する. 呼べるのは今の手番の人だけ, WILD 待ちでない, かつ直前の
+    /// SPIN の演出がもう終わっているとき.
     ///
     /// 結果はチンチロの出目のように本人の端末で新しく決めるのではなく,
     /// 対戦開始時の種から計算する(`drawSequence(seed:)`)ので, 誰の端末で
     /// 呼んでも同じ結果になる.
-    func spinning(by userID: UserID) -> SlingoSnapshot? {
-        guard var round, !isFinished, round.pendingWildFor == nil, currentPlayerID == userID else { return nil }
+    func spinning(by userID: UserID, now: Date = .now) -> SlingoSnapshot? {
+        guard var round, !isFinished, round.pendingWildFor == nil, currentPlayerID == userID,
+              !isRevealing(now: now)
+        else { return nil }
         let sequence = Self.drawSequence(seed: round.startSeed)
         guard round.spinIndex < sequence.count else { return nil }
 
         let draw = sequence[round.spinIndex]
         round.spinIndex += 1
         round.lastDraw = draw
+        round.lastDrawAt = now
         round.lastSpinnerID = userID
 
         switch draw {
         case .wild:
             round.pendingWildFor = userID
+        case .miss:
+            round.currentPlayerIndex = (round.currentPlayerIndex + 1) % round.playerIDs.count
         case .number(let value):
             round.revealedNumbers.insert(value)
             let finishers = Self.newlyCompletedPlayers(round: round)
@@ -270,10 +345,10 @@ struct SlingoSnapshot: Hashable, Sendable, Codable {
     }
 
     /// WILD: 自分のカードの未開放マスを 1 つ選んで開ける.
-    /// 呼べるのは WILD を引いた本人だけ, かつまだ開いていない, 自分のカードに
-    /// 実在する数字のときだけ.
-    func openingWildCell(_ number: Int, by userID: UserID) -> SlingoSnapshot? {
-        guard var round, !isFinished, round.pendingWildFor == userID,
+    /// 呼べるのは WILD を引いた本人だけ, まだ開いていない・自分のカードに
+    /// 実在する数字で, かつ WILD の演出がもう終わっているときだけ.
+    func openingWildCell(_ number: Int, by userID: UserID, now: Date = .now) -> SlingoSnapshot? {
+        guard var round, !isFinished, round.pendingWildFor == userID, !isRevealing(now: now),
               let card = card(for: userID), card.numbers.contains(number)
         else { return nil }
         let opens = Self.openNumbers(round: round, playerID: userID)
